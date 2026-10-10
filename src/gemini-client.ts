@@ -13,7 +13,7 @@ import {
 import { AuthManager } from "./auth";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
 import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
-import { geminiCliModels } from "./models";
+import { geminiCliModels, resolveModel } from "./models";
 import { validateContent } from "./utils/validation";
 import { GenerationConfigValidator } from "./helpers/generation-config-validator";
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
@@ -556,8 +556,9 @@ export class GeminiApiClient {
 			}
 		}
 
-		// Check if this is a thinking model and which thinking mode to use
-		const isThinkingModel = geminiCliModels[modelId]?.thinking || false;
+		// Check if this is a thinking model (unknown/dynamic models are treated
+		// as thinking-capable since all current Antigravity models think)
+		const isThinkingModel = geminiCliModels[modelId]?.thinking ?? true;
 		const isRealThinkingEnabled = this.env.ENABLE_REAL_THINKING === "true";
 		const isFakeThinkingEnabled = this.env.ENABLE_FAKE_THINKING === "true";
 		const streamThinkingAsContent = this.env.STREAM_THINKING_AS_CONTENT === "true";
@@ -593,28 +594,20 @@ export class GeminiApiClient {
 		let finalModelEnum = "MODEL_PLACEHOLDER_M0";
 		let customThinkingBudget = 1000;
 		let finalModelId = modelId;
+		let dynamicThinkingBudget: number | undefined;
 
-		if (this.dynamicModelMap) {
-			const dModel = this.dynamicModelMap[modelId];
-			if (dModel) {
-				if (dModel.model) finalModelEnum = dModel.model;
-				if (dModel.thinkingBudget) customThinkingBudget = dModel.thinkingBudget;
-			} else {
-				for (const [key, value] of Object.entries(this.dynamicModelMap)) {
-					if ((value as any).displayName === modelId) {
-						finalModelId = key;
-						if ((value as any).model) finalModelEnum = (value as any).model;
-						if ((value as any).thinkingBudget) customThinkingBudget = (value as any).thinkingBudget;
-						// Skip deprecated models like M37 and keep looking for the active one (M16)
-						if (finalModelEnum !== "MODEL_PLACEHOLDER_M37") {
-							break;
-						}
-					}
-				}
+		const resolved = resolveModel(modelId, this.dynamicModelMap);
+		if (resolved) {
+			finalModelId = resolved.id;
+			if (resolved.modelEnum) finalModelEnum = resolved.modelEnum;
+			if (typeof resolved.thinkingBudget === "number") {
+				customThinkingBudget = resolved.thinkingBudget;
+				dynamicThinkingBudget = resolved.thinkingBudget;
 			}
-		} else {
-			// Hardcoded fallbacks based on recent Antigravity 2.0 reverse engineering
-			// Match both internal keys and IDE displayNames
+		} else if (!this.dynamicModelMap) {
+			// Hardcoded fallbacks based on recent Antigravity 2.0 reverse engineering.
+			// Only used when dynamic discovery is unavailable. Match both internal
+			// keys and IDE displayNames.
 			if (modelId === "claude-opus-4-6-thinking" || modelId === "Claude Opus 4.6 (Thinking)") {
 				finalModelId = "claude-opus-4-6-thinking";
 				finalModelEnum = "MODEL_PLACEHOLDER_M26";
@@ -626,13 +619,13 @@ export class GeminiApiClient {
 			} else if (modelId === "gemini-3.5-flash-extra-low" || modelId === "Gemini 3.5 Flash (Low)") {
 				finalModelId = "gemini-3.5-flash-extra-low";
 				finalModelEnum = "MODEL_PLACEHOLDER_M187";
-				customThinkingBudget = 4000; // Matches dump budget for Low
+				customThinkingBudget = 4000;
 			} else if (modelId === "gemini-3.5-flash-medium" || modelId === "Gemini 3.5 Flash (Medium)") {
-				finalModelId = "gemini-3.5-flash-low"; // Key from dynamic dump
+				finalModelId = "gemini-3.5-flash-medium";
 				finalModelEnum = "MODEL_PLACEHOLDER_M20";
 				customThinkingBudget = 4000;
 			} else if (modelId === "gemini-3.5-flash-high" || modelId === "Gemini 3.5 Flash (High)") {
-				finalModelId = "gemini-3-flash-agent";
+				finalModelId = "gemini-3.5-flash-high";
 				finalModelEnum = "MODEL_PLACEHOLDER_M132";
 				customThinkingBudget = 10000;
 			} else if (modelId === "gpt-oss-120b-medium" || modelId === "GPT-OSS 120B (Medium)") {
@@ -642,16 +635,37 @@ export class GeminiApiClient {
 			}
 		}
 
-		const isNewModel = finalModelId.includes("3.6") || finalModelId.includes("3.7") || finalModelEnum === "MODEL_PLACEHOLDER_M73";
+		// Gemini 3.x models take larger outputs than the 2.5 generation
+		const isNewModel = /gemini-3/.test(finalModelId);
 		const maxTokens = isNewModel ? 65536 : 16384;
 
-		const finalGenerationConfig = {
-			maxOutputTokens: maxTokens,
-			thinkingConfig: {
-				includeThoughts: true,
-				thinkingBudget: customThinkingBudget
-			}
+		// Build the generation config. Start from the validated config produced
+		// above (temperature, topP, stopSequences, penalties, seed, response
+		// mime type and — when real thinking was requested — the thinking
+		// config), then enforce the output-token ceiling.
+		const finalGenerationConfig: Record<string, unknown> = {
+			...(generationConfig as Record<string, unknown>),
+			maxOutputTokens: maxTokens
 		};
+
+		// If no thinking config was set by the validated path (real thinking not
+		// enabled/requested), apply the upstream-advertised defaults so the
+		// backend still runs in the expected thinking mode for this model.
+		if (!finalGenerationConfig.thinkingConfig) {
+			if (/gemini-3/.test(finalModelId)) {
+				// Gemini 3.x uses thinkingLevel rather than a raw budget
+				const level = customThinkingBudget <= 4096 ? "low" : "high";
+				finalGenerationConfig.thinkingConfig = {
+					thinkingLevel: level,
+					includeThoughts: true
+				};
+			} else {
+				finalGenerationConfig.thinkingConfig = {
+					thinkingBudget: dynamicThinkingBudget ?? customThinkingBudget,
+					includeThoughts: true
+				};
+			}
+		}
 
 		const conversationId = crypto.randomUUID();
 		const trajectoryId = crypto.randomUUID();

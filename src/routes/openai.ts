@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { Env, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ModelInfo, MessageContent, EffortLevel } from "../types";
-import { DEFAULT_MODEL, getAllModelIds } from "../models";
+import { DEFAULT_MODEL, buildExposedModelIds, resolveModel, isValidModel } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
 import { DEFAULT_THINKING_BUDGET, MIME_TYPE_MAP } from "../constants";
 import { AuthManager } from "../auth";
@@ -40,35 +40,9 @@ OpenAIRoute.get("/models", async (c) => {
 	}
 
 	const dynamicModels = geminiClient.getDynamicModels();
-	const staticModelIds = getAllModelIds();
-	
-	const allModelIds = new Set<string>();
-	
-	if (dynamicModels && Object.keys(dynamicModels).length > 0) {
-		for (const [key, value] of Object.entries(dynamicModels)) {
-			const modelObj = value as any;
-			
-			// Filter out junk, internal, tab completion, and image generation models
-			if (
-				modelObj.isInternal === true ||
-				key.startsWith("chat_") ||
-				key.startsWith("tab_") ||
-				key.includes("image") ||
-				(modelObj.displayName && modelObj.displayName.toLowerCase().includes("image"))
-			) {
-				continue;
-			}
+	const allModelIds = buildExposedModelIds(dynamicModels);
 
-			// Add the display name if available, otherwise fallback to key
-			// This makes the IDE dropdown look clean (e.g. "Gemini 3.5 Flash (High)")
-			allModelIds.add(modelObj.displayName || key);
-		}
-	} else {
-		// Fallback to static models if dynamic fetch fails
-		staticModelIds.forEach(id => allModelIds.add(id));
-	}
-
-	const modelData = Array.from(allModelIds).map((modelId) => ({
+	const modelData = allModelIds.map((modelId) => ({
 		id: modelId,
 		object: "model",
 		created: Math.floor(Date.now() / 1000),
@@ -84,9 +58,20 @@ OpenAIRoute.get("/models", async (c) => {
 // Retrieve a specific model
 OpenAIRoute.get("/models/:model", async (c) => {
 	const modelId = c.req.param("model");
-	const allRealModels = getAllModelIds();
 
-	if (allRealModels.includes(modelId)) {
+	// Try dynamic resolution first (display names, dynamic keys, aliases)
+	let resolved = false;
+	try {
+		const authManager = new AuthManager(c.env);
+		const geminiClient = new GeminiApiClient(c.env, authManager);
+		await authManager.initializeAuth();
+		await geminiClient.fetchDynamicModels();
+		resolved = resolveModel(modelId, geminiClient.getDynamicModels()) !== null;
+	} catch (e) {
+		console.warn("Could not resolve model dynamically for /models/:model", e);
+	}
+
+	if (resolved || isValidModel(modelId)) {
 		const modelData = {
 			id: modelId,
 			object: "model",

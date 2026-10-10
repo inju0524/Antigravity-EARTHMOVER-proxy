@@ -123,8 +123,9 @@ export class GenerationConfigValidator {
 	static validateThinkingBudget(modelId: string, thinkingBudget: number): number {
 		const modelInfo = geminiCliModels[modelId];
 
-		// For thinking models, validate the budget
-		if (modelInfo?.thinking) {
+		// For thinking models (including unknown/dynamic ones, which are all
+		// thinking-capable in the current Antigravity lineup), validate the budget
+		if (modelInfo?.thinking !== false) {
 			// Gemini 2.5 Pro and Flash don't support thinking_budget: 0
 			// They require -1 (dynamic allocation) or positive numbers
 			if (thinkingBudget === 0) {
@@ -174,7 +175,10 @@ export class GenerationConfigValidator {
 		}
 
 		const modelInfo = geminiCliModels[modelId];
-		const isThinkingModel = modelInfo?.thinking || false;
+		// Unknown/dynamic models are treated as thinking-capable (all current
+		// Antigravity models think); strict validation only applies to the
+		// known non-thinking static entries.
+		const isThinkingModel = modelInfo?.thinking ?? true;
 
 		if (isThinkingModel && includeReasoning && isRealThinkingEnabled) {
 			const reasoning_effort =
