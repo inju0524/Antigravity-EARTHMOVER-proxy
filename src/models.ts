@@ -218,19 +218,6 @@ export const geminiCliModels: Record<string, ModelInfo> = {
 		description: "Gemini 3.1 Flash Lite via Antigravity",
 		thinking: true
 	},
-	"gemini-3.1-flash-image": {
-		maxTokens: 4096,
-		contextWindow: 128_000,
-		supportsImages: true,
-		supportsAudios: false,
-		supportsVideos: false,
-		supportsPdfs: false,
-		supportsPromptCache: false,
-		inputPrice: 0,
-		outputPrice: 0,
-		description: "Google's Gemini 3.1 Flash Image generation model via Antigravity",
-		thinking: false
-	},
 	// --- Gemini 3 Flash ---
 	"gemini-3-flash": {
 		maxTokens: 65536,
@@ -609,13 +596,13 @@ export function buildExposedModelIds(dynamicMap: Record<string, DynamicModelEntr
 				entry.isInternal === true ||
 				key.startsWith("chat_") ||
 				key.startsWith("tab_") ||
-				(key.includes("image") && key !== "gemini-3.1-flash-image") ||
-				(entry.displayName && entry.displayName.toLowerCase().includes("image") && key !== "gemini-3.1-flash-image")
+				key.includes("image") ||
+				(entry.displayName && entry.displayName.toLowerCase().includes("image"))
 			) {
 				continue;
 			}
 
-			const canonical = key === "gemini-3.1-flash-image" ? "gemini-3.1-flash-image" : preferredCanonicalId(key, entry);
+			const canonical = preferredCanonicalId(key, entry);
 			ids.add(canonical);
 
 			// Thinking-level variants only for the newest families

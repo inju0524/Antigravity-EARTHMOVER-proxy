@@ -59,14 +59,11 @@ app.use("/v1/*", openAIApiKeyAuth);
 
 import { SdapiRoute } from "./routes/sdapi";
 import { DebugRoute } from "./routes/debug";
-import { ImagesRoute } from "./routes/images";
 
 // Setup route handlers
 app.route("/v1", OpenAIRoute);
 app.route("/sdapi", SdapiRoute);
 app.route("/debug", DebugRoute);
-app.route("/images", ImagesRoute);
-app.route("/v1/images", ImagesRoute);
 
 // Root endpoint - basic info about the service
 app.get("/", (c) => {
