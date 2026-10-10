@@ -423,11 +423,29 @@ const TIER_VARIANT_LEVELS: Record<string, "low" | "high"> = {
 };
 
 /**
- * Restores the dotted version number in a normalized family base so exposed
- * ids stay readable: "gemini-38-flash" -> "gemini-3.8-flash".
+ * Restores dotted version numbers in a normalized id so exposed ids stay
+ * readable. Only Anthropic-style names keep a dotted "4.6"; Google-style
+ * ids use dashes throughout ("claude-opus-46-thinking" ->
+ * "claude-opus-4.6-thinking", "gemini-38-flash" -> "gemini-3.8-flash").
  */
 function denormalizeFamilyBase(base: string): string {
-	return base.replace(/-(\d)(\d)-/, "-$1.$2-");
+	return base.replace(/-(\d)(\d)(?=-|$)/, "-$1.$2");
+}
+
+/** Model families (by normalized base) that expose thinking-level variants. */
+export const THINKING_VARIANT_FAMILIES = new Set(["gemini-36-flash", "gemini-37-flash", "gemini-38-flash"]);
+
+/**
+ * Preferred canonical id for a dynamic key. Upstream sometimes exposes the
+ * same physical model under several keys (gemini-pro-agent vs
+ * gemini-3.1-pro-high, claude-sonnet-4-6 vs claude-sonnet-4-6-thinking);
+ * the kebab-case alias derived from the displayName is always prettier.
+ */
+function preferredCanonicalId(key: string, entry: DynamicModelEntry): string {
+	if (entry.displayName) {
+		return denormalizeFamilyBase(normalizeModelId(entry.displayName));
+	}
+	return denormalizeFamilyBase(normalizeModelId(key));
 }
 
 /**
@@ -559,9 +577,15 @@ export function resolveModel(
 
 /**
  * Builds the list of model ids to expose on /v1/models.
- * For every dynamic model we expose BOTH the display name (pretty, for IDE
- * dropdowns) and a normalized kebab-case alias (for API clients that follow
- * the OpenAI id conventions, e.g. "gemini-3.8-flash-high").
+ *
+ * Policy:
+ * - One canonical kebab-case id per physical model (deduped across alias
+ *   keys like gemini-pro-agent vs gemini-3.1-pro-high).
+ * - Only the newest families (3.6/3.7/3.8) get thinking-level variants
+ *   (-low/-medium/-high); older families expose a single id which the
+ *   request path pins to the highest advertised thinking budget.
+ * - Internal, tab-completion and image-generation entries are hidden.
+ * Legacy ids still resolve via resolveModel(); they just aren't listed.
  */
 export function buildExposedModelIds(dynamicMap: Record<string, DynamicModelEntry> | null): string[] {
 	const ids = new Set<string>();
@@ -578,44 +602,33 @@ export function buildExposedModelIds(dynamicMap: Record<string, DynamicModelEntr
 				continue;
 			}
 
-			const display = entry.displayName || key;
-			ids.add(display);
+			const canonical = preferredCanonicalId(key, entry);
+			ids.add(canonical);
 
-			// Kebab-case alias for API clients (skip if it adds nothing new)
-			const aliasSource = entry.displayName ? entry.displayName : key;
-			const alias = normalizeModelId(aliasSource);
-			if (alias && alias !== display) {
-				ids.add(alias);
-			}
-			// Also expose the raw key when it differs from the display name
-			if (key !== display) {
-				ids.add(key);
-			}
-
-			// Synthesize effort variants for "-tiered" families so clients can
-			// pick a thinking level explicitly (gemini-3.8-flash-high etc.)
-			const normalizedKey = normalizeModelId(key);
-			const normalizedDisplay = normalizeModelId(display);
-			const exposedBases = new Set<string>();
-			for (const family of [normalizedKey, normalizedDisplay]) {
-				const familyBase = family.replace(/-tiered$/, "");
-				if (familyBase === family) continue;
-				exposedBases.add(denormalizeFamilyBase(familyBase));
-			}
-			for (const base of exposedBases) {
-				for (const variant of Object.keys(TIER_VARIANT_LEVELS)) {
-					ids.add(`${base}-${variant}`);
+			// Thinking-level variants only for the newest families
+			const normalizedCanonical = normalizeModelId(canonical);
+			if (normalizedCanonical.endsWith("-tiered")) {
+				const familyBase = normalizedCanonical.replace(/-tiered$/, "");
+				if (THINKING_VARIANT_FAMILIES.has(familyBase)) {
+					const base = denormalizeFamilyBase(familyBase);
+					for (const variant of Object.keys(TIER_VARIANT_LEVELS)) {
+						ids.add(`${base}-${variant}`);
+					}
 				}
 			}
 		}
 	} else {
-		// Fallback to static table
+		// Fallback to static table: dedupe aliases, same variant policy
 		for (const id of Object.keys(geminiCliModels)) {
+			const normalized = normalizeModelId(id);
+			const aliased = MODEL_ALIAS_MAP[normalized];
+			// Skip ids that are aliases of a preferred canonical entry
+			if (aliased && aliased !== id && geminiCliModels[aliased]) continue;
 			ids.add(id);
 		}
 	}
 
-	return Array.from(ids);
+	return Array.from(ids).sort();
 }
 
 // --- Helper Functions ---

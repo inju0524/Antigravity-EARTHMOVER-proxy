@@ -13,7 +13,7 @@ import {
 import { AuthManager } from "./auth";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
 import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
-import { geminiCliModels, resolveModel } from "./models";
+import { geminiCliModels, resolveModel, normalizeModelId, THINKING_VARIANT_FAMILIES, DynamicModelEntry } from "./models";
 import { validateContent } from "./utils/validation";
 import { GenerationConfigValidator } from "./helpers/generation-config-validator";
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
@@ -607,6 +607,23 @@ export class GeminiApiClient {
 			}
 			if (resolved.forcedThinkingLevel) {
 				forcedThinkingLevel = resolved.forcedThinkingLevel;
+			}
+
+			// Only the newest families (3.6/3.7/3.8) offer thinking-level
+			// choice. For everything older, pin the budget to the highest
+			// advertised within the same family so "gemini-3.1-flash-lite"
+			// always thinks at full depth.
+			if (!forcedThinkingLevel && this.dynamicModelMap) {
+				const familyBase = normalizeModelId(modelId).replace(/-(low|medium|high|extra-low|lite|tiered|thinking)$/, "");
+				if (!THINKING_VARIANT_FAMILIES.has(familyBase)) {
+					for (const entry of Object.values(this.dynamicModelMap)) {
+						const e = entry as DynamicModelEntry;
+						const entryBase = normalizeModelId(String(e.displayName || "")).replace(/-(low|medium|high|extra-low|lite|tiered|thinking)$/, "");
+						if (entryBase === familyBase && typeof e.thinkingBudget === "number" && e.thinkingBudget > customThinkingBudget) {
+							customThinkingBudget = e.thinkingBudget;
+						}
+					}
+				}
 			}
 		} else if (!this.dynamicModelMap) {
 			// Hardcoded fallbacks based on recent Antigravity 2.0 reverse engineering.

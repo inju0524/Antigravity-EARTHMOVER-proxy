@@ -14,6 +14,10 @@ const dynamicMap: Record<string, any> = {
 	"claude-opus-4-6-thinking": { model: "MODEL_PLACEHOLDER_M26", displayName: "Claude Opus 4.6 (Thinking)", thinkingBudget: 1024 },
 	"claude-sonnet-4-6-thinking": { model: "MODEL_PLACEHOLDER_M35", displayName: "Claude Sonnet 4.6 (Thinking)", thinkingBudget: 1024 },
 	"gpt-oss-120b-medium": { model: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", displayName: "GPT-OSS 120B (Medium)", thinkingBudget: 8192 },
+	"gemini-3.1-flash-lite": { model: "MODEL_PLACEHOLDER_M50", displayName: "Gemini 3.1 Flash Lite", thinkingBudget: 512 },
+	// Upstream duplicates: same physical models under alias keys
+	"gemini-pro-agent": { model: "MODEL_PLACEHOLDER_M16", displayName: "Gemini 3.1 Pro (High)", thinkingBudget: 10001 },
+	"claude-sonnet-4-6": { model: "MODEL_PLACEHOLDER_M35", displayName: "Claude Sonnet 4.6 (Thinking)", thinkingBudget: 1024 },
 	"gemini-3.5-flash-deprecated": { model: "MODEL_PLACEHOLDER_M37", displayName: "Gemini 3.5 Flash (Medium)", thinkingBudget: 4000 },
 	"gemini-3.5-flash-medium": { model: "MODEL_PLACEHOLDER_M20", displayName: "Gemini 3.5 Flash (Medium)", thinkingBudget: 4000 },
 	"chat_internal": { model: "X", displayName: "Chat Internal" },
@@ -63,13 +67,30 @@ check("unknown returns null", resolveModel("gemini-9.9-ultra", dynamicMap), null
 // static-only fallback (no dynamic map)
 check("static fallback", resolveModel("gemini-2.5-flash", null)?.id, "gemini-2.5-flash");
 
-// buildExposedModelIds
+// buildExposedModelIds: one canonical kebab-case id per physical model,
+// variants only for 3.6/3.7/3.8, no display names or duplicate raw keys
 const ids = buildExposedModelIds(dynamicMap);
-for (const expected of ["gemini-3.8-flash-high", "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-tiered", "Gemini 3.8 Flash (Tiered)", "claude-sonnet-46-thinking"]) {
+for (const expected of [
+	"gemini-3.8-flash-high", "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-tiered",
+	"gemini-3.6-flash-high", "gemini-3.6-flash-low",
+	"claude-sonnet-4.6-thinking", "claude-opus-4.6-thinking",
+	"gemini-3.1-pro-high", "gemini-3.1-pro-low", "gemini-3.1-flash-lite",
+	"gemini-3-flash", "gemini-3.5-flash-medium", "gpt-oss-120b-medium"
+]) {
 	check(`exposes ${expected}`, ids.includes(expected), true);
 }
-check("filters chat_", ids.includes("chat_internal") || ids.includes("Chat Internal"), false);
+// Dedup / cleanup: no display names, no alias keys, no normalized dupes
+for (const banned of [
+	"Gemini 3.8 Flash (Tiered)", "Gemini 3.5 Flash (Medium)",
+	"gemini-38-flash-tiered", "gemini-35-flash-medium",
+	"gemini-pro-agent", "claude-sonnet-4-6", "chat_internal", "Chat Internal"
+]) {
+	check(`hides ${banned}`, ids.includes(banned), false);
+}
 check("filters image", ids.some((i) => i.toLowerCase().includes("image")), false);
+// No duplicate physical models under different names
+check("no duplicate 3.1-pro-high entries", ids.filter((i) => normalizeModelId(i) === "gemini-31-pro-high").length, 1);
+check("no duplicate claude-sonnet entries", ids.filter((i) => normalizeModelId(i) === "claude-sonnet-46-thinking").length, 1);
 
 // static fallback list
 const staticIds = buildExposedModelIds(null);
@@ -101,6 +122,9 @@ check("real 3.6 high no forced level", real36?.forcedThinkingLevel, undefined);
 for (const v of ["gemini-3.8-flash-high", "gemini-3.8-flash-low", "gemini-3.8-flash-medium"]) {
 	check(`exposes synth ${v}`, buildExposedModelIds(dynamicMap).includes(v), true);
 }
+// 3.5 family does NOT get thinking-level variants (old model, pinned to max)
+const exposedIds = buildExposedModelIds(dynamicMap);
+check("no 3.5 variants", exposedIds.some((i) => /^gemini-3\.5-flash-(low|medium|high)$/.test(i) && i !== "gemini-3.5-flash-medium"), false);
 
 // Synthesis works without a dynamic map too (static fallback)
 const synStatic = resolveModel("gemini-3.8-flash-high", null);
