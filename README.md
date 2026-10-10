@@ -1,238 +1,188 @@
 # Antigravity EARTHMOVER Proxy 🚀
 
-*[🇷🇺 Читать на русском ниже](#русская-версия)*
+> 一个 **100% 无服务器** 的 Cloudflare Worker 反代，将 Google Antigravity 内部 Cloud Code 端点包装成 OpenAI 兼容 API。
 
-> *"We came, we saw, we conquered - the triumph of the will"*
+与其他需要你在后台挂着 Antigravity 桌面客户端、从 SQLite 里抠 token 的社区方案不同，本项目**完全自治**：OAuth token 刷新、动态模型发现、请求载荷伪装全部在云端完成。
 
-💖 **Support the author:** [Boosty](https://boosty.to/redbaron1914)
+## ✨ 特性
 
-This is the ultimate, **100% serverless** Cloudflare Worker proxy that exposes an OpenAI-compatible API backed by the internal Antigravity Cloud Code endpoint. 
-
-Unlike other community proxies that require you to keep the heavy Antigravity desktop app running in the background to scrape SQLite databases, this proxy is **completely autonomous**. It handles its own OAuth token refreshes, dynamic model discovery, and payload manipulation directly in the cloud.
-
-## Features
-- ☁️ **100% Serverless:** Deploy to Cloudflare Workers and close your terminal. No background daemons required.
-- 🎭 **Perfect Mimicry:** Bypasses Google's 500/403 API errors by perfectly replicating the internal Go daemon's HTTP payload (including `ThinkingConfig`, `model_enum` placeholders, and telemetry labels).
-- 🔄 **Autonomous Auth:** Automatically exchanges and refreshes tokens using the official Antigravity Client ID & Secret.
-- 🛡️ **Abuse Protection:** Strips out Clearcut telemetry tracking while maintaining a valid request structure.
-- 📡 **Dynamic Routing:** Automatically discovers and routes models directly from Google's `fetchAvailableModels` internal dictionary.
-- 🔌 **IDE Ready:** Drop-in replacement for OpenAI API in Zed, Cursor, or any other frontend.
-- 👁️ **Full Multimodality:** Send Images, Audio, Video, and PDFs seamlessly. Bypasses internal restrictions using intelligent tool-call masking.
-- 🎨 **Image Generation (Nanobanano):** Built-in support for generating images via the standard SD WebUI API (`/sdapi/v1/txt2img`). Compatible with SillyTavern out-of-the-box.
+- ☁️ **100% 无服务器**：部署到 Cloudflare Workers 后关掉终端即可，无需任何常驻进程
+- 🎭 **完美伪装**：完整复刻官方 Go 守护进程的 HTTP 载荷（`thinkingConfig`、`model_enum` 占位符、遥测标签），规避 Google 的 500/403 错误
+- 🔄 **自治鉴权**：使用官方 Antigravity Client ID & Secret 自动交换、刷新 token
+- 🛡️ **反追踪**：剥离 Clearcut 遥测，同时保持请求结构合法
+- 📡 **动态路由**：自动从 Google `fetchAvailableModels` 内部字典发现并路由模型
+- 🧠 **思考强度控制**：支持 `reasoning_effort` 参数与 `gemini-3.8-flash-low/medium/high` 等显式变体（详见下文）
+- 🔌 **IDE 即插即用**：Zed、Cursor、SillyTavern 或任何 OpenAI 兼容前端的直接替代品
+- 👁️ **完整多模态**：图片、音频、视频、PDF 无缝发送，通过智能工具调用伪装绕过内部限制
+- 🎨 **图像生成（Nanobanano)**：内置标准 SD WebUI API(`/sdapi/v1/txt2img`),SillyTavern 开箱即用
+- 🔁 **多账号轮询池**：基于 Cloudflare KV 的热切换账号池，单账号配额耗尽后自动换号重试
 
 ---
 
-## ⚡ Quick Start (For Beginners)
+## ⚡ 快速上手（新手向）
 
-Even if you have never opened a terminal before, just follow these simple steps!
+即使从未用过终端，按步骤操作即可。
 
-### Step 0: Prerequisites
-1. Download and install [Node.js](https://nodejs.org/) (LTS version).
-2. Create a free account on [Cloudflare](https://dash.cloudflare.com/sign-up).
-3. Download this repository (Click the green `Code` button -> `Download ZIP`) and extract it to a folder.
-4. Open your computer's Terminal (Command Prompt / PowerShell on Windows, Terminal on Mac) and navigate to that folder:
+### 第 0 步：准备工作
+
+1. 下载安装 [Node.js](https://nodejs.org/)(LTS 版本）
+2. 注册免费的 [Cloudflare](https://dash.cloudflare.com/sign-up) 账号
+3. 下载本仓库（点击绿色 `Code` 按钮 → `Download ZIP`）并解压
+4. 打开终端（Windows 用 PowerShell / 命令提示符，Mac 用 Terminal)，进入解压目录：
    ```bash
-   cd path/to/extracted/folder
+   cd 解压目录路径
    ```
 
-### Step 1: Install Dependencies & Login
-Install the required tools and link your Cloudflare account to your terminal:
+### 第 1 步：安装依赖并登录
+
 ```bash
 npm install
 npx wrangler login
 ```
-*(A browser window will open asking you to authorize Cloudflare. Click "Allow".)*
+*（浏览器会弹出 Cloudflare 授权页面，点击 "Allow"。)*
 
-### Step 2: Get Your Google Token
-You do not need to install the official Antigravity client. We have included an automated script that mimics the OAuth flow.
+### 第 2 步：获取 Google Token
+
+无需安装官方 Antigravity 客户端，内置脚本会自动模拟 OAuth 流程：
+
 ```bash
 node scripts/login.js
 ```
-Follow the instructions in the terminal. The script will output a massive JSON block at the end. Copy this entire JSON block.
 
-### Step 3: Deploy the Proxy
-Upload the code to your Cloudflare account:
+按终端提示操作，脚本最后会输出一大段 JSON,**完整复制**这段 JSON。
+
+### 第 3 步：部署反代
+
 ```bash
 npx wrangler deploy
 ```
 
-### Step 4: Inject the Secret
-Bind your Google OAuth token to the deployed worker securely:
+### 第 4 步：注入密钥
+
+把你的 Google OAuth token 安全地绑定到 Worker:
+
 ```bash
 npx wrangler secret put GCP_SERVICE_ACCOUNT
 ```
-*Paste the JSON block you copied from Step 2 when prompted and hit Enter.*
+*出现提示时粘贴第 2 步复制的 JSON，回车。*
 
-*(Optional)* If you have a specific Google Cloud project with the Cloud AI Companion API enabled and you are ready to pay for billing, you can bypass the default free-tier shadow project by setting your own:
+*（可选）* 如果你有自己的 Google Cloud 项目且已开通 Cloud AI Companion API 并愿意付费，可以覆盖默认的免费影子项目：
+
 ```bash
 npx wrangler secret put GEMINI_PROJECT_ID
 ```
 
 ---
 
-## 🛠️ Usage in any frontend
-Configure your IDE (like Zed or Cursor) or chat UI to point to your new Cloudflare Worker URL.
+## 🛠️ 在任意前端中使用
 
-**Base URL:** `https://antigravity-earthmover-worker.<your-subdomain>.workers.dev/v1`  
-*(You can find your exact URL in the terminal output after running `npx wrangler deploy`)*
+在 IDE（如 Zed、Cursor）或聊天 UI 中配置：
 
-**API Key:** `dummy-key` *(Can be anything, the worker handles actual auth)*  
+- **Base URL:** `https://antigravity-earthmover-worker.<你的子域>.workers.dev/v1`
+  *（具体 URL 见 `npx wrangler deploy` 的终端输出）*
+- **API Key:** `dummy-key` *（随便填，真正的鉴权由 Worker 处理）*
 
-The proxy will dynamically populate your model dropdown with the actual display names (e.g., `Gemini 3.5 Flash (Medium)`, `Claude Opus 4.6 (Thinking)`). Select one and start coding!
-
----
-
-## 🎨 Image Generation (SD WebUI API)
-
-EARTHMOVER includes built-in support for image generation using Google's Gemini 3.1 Flash Image model via a standard SD WebUI compatible endpoint.
-
-To use this in clients like **SillyTavern**:
-1. Go to the Image Generation extension settings.
-2. Select **Stable Diffusion WebUI** as the provider.
-3. Set the API URL to: `https://antigravity-earthmover-worker.<your-subdomain>.workers.dev` (Do **not** add `/v1` at the end).
-4. Generate images using standard prompts! (Under the hood, it uses the nanobanano approach to seamlessly route requests to Gemini).
+`/v1/models` 会动态返回模型列表，同时包含美化显示名（如 `Gemini 3.8 Flash (High)`）和 kebab-case ID（如 `gemini-3.8-flash-high`)，两种写法都可以用于请求。
 
 ---
 
-## 🔁 Multi-Account Round-Robin (Bypass Quotas)
-Google aggressively limits Claude Opus and Gemini Pro usage (often applying 150+ hour quota bans on free-tier accounts). EARTHMOVER supports a **Multi-Account Hot-Swap Pool** using Cloudflare KV. If an account runs out of quota, the proxy instantly marks it exhausted and retries the exact same request with the next available account.
+## 🧠 思考强度（Thinking Level）控制
 
-1. **Create a KV Database:**
+本项目支持三种方式控制 Gemini 3.x 模型的思考强度：
+
+**方式一：选择显式变体模型（推荐）**
+
+上游 Antigravity 对 3.8 系列目前只投放了自动分层的 `gemini-3.8-flash-tiered`,本代理在本地合成了显式变体，直接选择即可：
+
+| 模型 ID | 思考强度 |
+|---|---|
+| `gemini-3.8-flash-low` | low |
+| `gemini-3.8-flash-medium` | high |
+| `gemini-3.8-flash-high` | high |
+| `gemini-3.8-flash-tiered` | 上游自动分层 |
+
+3.6/3.7 家族上游已有真实变体，会直接使用官方条目。
+
+**方式二:`reasoning_effort` 参数**
+
+```json
+{
+  "model": "gemini-3.8-flash-tiered",
+  "messages": [...],
+  "reasoning_effort": "low"
+}
+```
+
+可选值：`none` / `low` / `medium` / `high`。
+
+**方式三：系统提示词指令（适用于不暴露参数设置的 UI)**
+
+在系统提示中加入：
+```
+reasoning_effort=high
+show_reasoning=true
+clean_context=true
+```
+
+---
+
+## 🎨 图像生成（SD WebUI API)
+
+内置基于 Gemini 3.1 Flash Image 模型的图像生成，走标准 SD WebUI 兼容端点。
+
+在 **SillyTavern** 中配置：
+
+1. 打开 Image Generation 扩展设置
+2. 提供商选择 **Stable Diffusion WebUI**
+3. API URL 填：`https://antigravity-earthmover-worker.<你的子域>.workers.dev`(**不要**加 `/v1` 后缀）
+4. 正常用提示词生图即可（底层通过 nanobanano 方案透明路由到 Gemini)
+
+---
+
+## 🔁 多账号轮询池（绕过配额）
+
+Google 对 Claude Opus 和 Gemini Pro 的免费额度限制很激进（动辄 150+ 小时配额封禁）。EARTHMOVER 支持基于 Cloudflare KV 的**多账号热切换池**：某账号配额耗尽时，代理立即将其标记为耗尽，并用下一个可用账号静默重试同一请求。
+
+1. **创建 KV 数据库：**
    ```bash
    npx wrangler kv:namespace create ACCOUNTS_KV
    ```
-2. **Bind it in `wrangler.toml`:**
-   Open the `wrangler.toml` file in a text editor. Look at the bottom of the file. Replace `YOUR_ACCOUNTS_KV_ID_HERE` with the `id` you got from Step 1.
-3. **Add Accounts to the Pool:**
-   We've included an automated script that handles OAuth and injects the credentials directly into your KV database. Run this script for each burner account you want to add:
+2. **在 `wrangler.toml` 中绑定：**
+   用文本编辑器打开 `wrangler.toml`，把文件底部的 `YOUR_ACCOUNTS_KV_ID_HERE` 替换为第 1 步得到的 `id`。
+3. **向池中添加账号：**
+   内置脚本会自动完成 OAuth 并把凭据直接写入 KV。对每个小号运行一次：
    ```bash
    node scripts/add-account.js
    ```
-   Follow the prompts to authorize and name your account.
-4. **Deploy:** 
+4. **重新部署：**
    ```bash
    npx wrangler deploy
    ```
-   The proxy will now intelligently balance requests across all loaded accounts!
+
+此后代理会在所有已加载账号间智能均衡请求。
 
 ---
 
-*Disclaimer: This is an unofficial tool created for educational and research purposes. Use at your own risk. It relies on undocumented APIs. Google may rotate the client secret or change the API structure at any time without warning. Consider burner accounts.*
+## 🔧 调试端点
 
----
----
-
-<a name="русская-версия"></a>
-# Antigravity EARTHMOVER Прокси 🚀
-
-> *"Пришли, увидели, победили - триумф воли"*
-
-💖 **Поддержать автора:** [Boosty](https://boosty.to/redbaron1914)
-
-Это ультимативный, **на 100% бессерверный** Cloudflare Worker прокси, который предоставляет OpenAI-совместимый API, работающий поверх скрытого внутреннего эндпоинта Antigravity Cloud Code.
-
-В отличие от других решений, которые заставляют вас держать тяжелое десктопное приложение Antigravity запущенным на фоне (чтобы воровать токены из SQLite), этот прокси **полностью автономен**. Он сам обновляет OAuth токены, сам скачивает словари моделей и сам формирует криптографически выверенные запросы прямо в облаке.
-
-## Особенности
-- ☁️ **Никаких серверов:** Задеплойте в Cloudflare и закройте терминал.
-- 🎭 **Идеальная маскировка:** Обходит ошибки 500/403 от Google, полностью копируя структуру HTTP-пакетов официального Go-демона.
-- 🔄 **Автономная авторизация:** Самостоятельно обновляет токены через официальные Client ID и Secret от Antigravity.
-- 🛡️ **Защита от банов:** Полностью вырезает телеметрию (Clearcut), маскируясь под клиента, отказавшегося от слежки.
-- 📡 **Динамический роутинг:** Автоматически скачивает свежий список моделей напрямую с серверов Google и на лету подменяет их на нужные M-коды.
-- 🔌 **Готов к работе:** Идеально работает в Zed, Cursor и любых других фронтэндах.
-- 👁️ **Полная мультимодальность:** Отправляйте картинки, аудио, видео и PDF. Умно обходит внутренние ограничения API с помощью маскировки под вызовы инструментов.
-- 🎨 **Генерация картинок (Nanobanano):** Встроенная поддержка генерации изображений через стандартный SD WebUI API (`/sdapi/v1/txt2img`). Идеально работает с SillyTavern из коробки.
+| 端点 | 说明 |
+|---|---|
+| `GET /health` | 健康检查 |
+| `POST /debug/token-test` | 测试 OAuth token 是否有效 |
+| `POST /debug/test` | 测试鉴权 + 项目发现 |
+| `GET /debug/raw-models` | **原样**返回上游官方 `fetchAvailableModels` 的完整响应（未经任何过滤），用于确认 Google 实际投放了哪些模型 |
 
 ---
 
-## ⚡ Быстрый старт (Для новичков)
+## 📦 更新部署
 
-Даже если вы никогда в жизни не открывали консоль, просто следуйте этим шагам!
+代码更新后，重新部署覆盖同一实例即可（密钥和 KV 绑定保存在 Cloudflare 服务端，不会丢失）:
 
-### Шаг 0: Подготовка
-1. Скачайте и установите [Node.js](https://nodejs.org/) (версию LTS).
-2. Создайте бесплатный аккаунт на [Cloudflare](https://dash.cloudflare.com/sign-up).
-3. Скачайте этот код (Нажмите зеленую кнопку `Code` -> `Download ZIP`) и распакуйте папку.
-4. Откройте терминал (Командная строка / PowerShell на Windows) и перейдите в эту папку:
-   ```bash
-   cd путь/до/распакованной/папки
-   ```
-
-### Шаг 1: Установка и Логин
-Установите нужные библиотеки и свяжите терминал с вашим аккаунтом Cloudflare:
 ```bash
-npm install
-npx wrangler login
-```
-*(Откроется окно браузера. Нажмите "Allow" (Разрешить), чтобы авторизовать Cloudflare).*
-
-### Шаг 2: Получение токена Google
-Вам не нужно скачивать оригинальный клиент Antigravity. Мы написали скрипт, который сделает всё за вас:
-```bash
-node scripts/login.js
-```
-Следуйте инструкциям в консоли. Скрипт выдаст вам огромный блок JSON. Скопируйте его целиком.
-
-### Шаг 3: Деплой в Cloudflare
-Отправьте код прокси в свое облако:
-```bash
+git pull
 npx wrangler deploy
 ```
 
-### Шаг 4: Добавление секрета
-Привяжите ваш токен Google к запущенному воркеру, чтобы он мог безопасно авторизовываться:
-```bash
-npx wrangler secret put GCP_SERVICE_ACCOUNT
-```
-*Вставьте скопированный JSON из Шага 2, когда консоль попросит об этом, и нажмите Enter.*
-
 ---
 
-## 🛠️ Использование
-
-Впишите эти данные в ваш фронтэнд клиент (например, Zed или Cursor):
-
-**Base URL:** `https://antigravity-earthmover-worker.<ваш-субдомен>.workers.dev/v1`  
-*(Свой точный адрес вы увидите в консоли после выполнения Шага 3)*
-
-**API Key:** `dummy-key` *(Можно писать что угодно, авторизацию берет на себя прокси)*  
-
-Прокси автоматически загрузит список актуальных моделей с их красивыми названиями (например, `Gemini 3.5 Flash (Medium)`, `Claude Opus 4.6 (Thinking)`). Выбирайте любую и наслаждайтесь!
-
----
-
-## 🎨 Генерация изображений (SD WebUI API)
-
-В EARTHMOVER встроена поддержка генерации картинок через модель Gemini 3.1 Flash Image с использованием стандартного SD WebUI эндпоинта.
-
-Чтобы подключить это в клиентах вроде **SillyTavern**:
-1. Откройте настройки расширения Image Generation.
-2. Выберите провайдером **Stable Diffusion WebUI**.
-3. Укажите API URL: `https://antigravity-earthmover-worker.<ваш-субдомен>.workers.dev` (Строго **без** `/v1` на конце).
-4. Генерируйте картинки как обычно! (Под капотом используется подход nanobanano для прозрачного роутинга запросов в Gemini).
-
----
-
-## 🔁 Мульти-Аккаунты и Балансировка (Обход Квот)
-Google жестко ограничивает использование Claude Opus и Gemini Pro (часто выдавая баны на 150+ часов для бесплатных аккаунтов). EARTHMOVER поддерживает **Пул Аккаунтов с Горячей Заменой** через Cloudflare KV. Если на одном из аккаунтов заканчивается квота, прокси моментально помечает его как "выжатый" и повторяет тот же самый запрос со следующего доступного аккаунта.
-
-1. **Создайте базу KV:**
-   ```bash
-   npx wrangler kv namespace create ACCOUNTS_KV
-   ```
-2. **Привяжите её в `wrangler.toml`:**
-   Откройте файл `wrangler.toml` в любом текстовом редакторе. Найдите в самом низу строку `id = "YOUR_ACCOUNTS_KV_ID_HERE"` и замените этот текст на `id`, который вам выдала команда на 1 шаге.
-3. **Добавьте аккаунты в пул:**
-   Мы написали автоматический скрипт, который сам проведет вас через авторизацию и загрузит ключи напрямую в базу KV. Запустите его для каждого "выкидного" аккаунта, который хотите добавить:
-   ```bash
-   node scripts/add-account.js
-   ```
-   Следуйте инструкциям в терминале, чтобы авторизоваться и задать имя аккаунту.
-4. **Задеплойте:** 
-   ```bash
-   npx wrangler deploy
-   ```
-   Теперь прокси будет умно балансировать ваши запросы между всеми загруженными аккаунтами!
-
----
-*Отказ от ответственности: Это неофициальный инструмент, созданный для образовательных и исследовательских целей. Используйте на свой страх и риск. Он использует недокументированные API. Google может в любое время без предупреждения изменить секрет клиента или структуру API. Рассмотрите использование выкидных аккаунтов.*
+*免责声明：本项目为教学与研究用途的非官方工具，使用风险自负。它依赖未公开 API,Google 可能随时更改客户端密钥或 API 结构。建议使用小号。*
