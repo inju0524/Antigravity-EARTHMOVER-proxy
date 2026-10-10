@@ -100,6 +100,19 @@ show_reasoning=true
 
 ---
 
+## 🎨 图像生成（SD WebUI API）
+
+内置基于 Gemini 3.1 Flash Image 模型的图像生成，走标准 SD WebUI 兼容端点。
+
+在 **SillyTavern** 等客户端中配置：
+
+1. 打开 Image Generation（图像生成）扩展设置
+2. 提供商选择 **Stable Diffusion WebUI**
+3. **API URL** 填：`https://<你的Worker域名>`（⚠️ **不要**加 `/v1` 后缀）
+4. 正常用提示词生图即可（底层通过 Nanobanano 方案透明路由到 Gemini）
+
+---
+
 ## 🔁 多账号负载均衡与防封禁 (KV 轮询池)
 
 对于高频使用 Claude Opus 或 Gemini Pro 的场景，建议配置多账号热备：
