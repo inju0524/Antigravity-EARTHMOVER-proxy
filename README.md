@@ -29,7 +29,7 @@
 
 ### 2. 本地安装与登录
 ```bash
-git clone https://github.com/<your-username>/Antigravity-EARTHMOVER-proxy.git
+git clone https://github.com/inju0524/Antigravity-EARTHMOVER-proxy.git
 cd Antigravity-EARTHMOVER-proxy
 npm install
 npx wrangler login
