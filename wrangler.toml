@@ -16,6 +16,10 @@ STREAM_THINKING_AS_CONTENT = "false"
 #binding = "ACCOUNTS_KV"
 #id = "29023f2c821a4ea18c1f8c18b70f6eac"
 
+[[kv_namespaces]]
+binding = "IMAGE_KV"
+id = "6b5e2a1d1e5b435c9b249885ba27fb78"
+
 
 # --- Local Development Configuration ---
 # This section configures local development with Docker and miniflare

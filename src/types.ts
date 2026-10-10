@@ -14,6 +14,7 @@ export interface Env {
 	GCP_SERVICE_ACCOUNT: string; // Now contains OAuth2 credentials JSON
 	GEMINI_PROJECT_ID?: string;
 	ACCOUNTS_KV?: KVNamespace; // Cloudflare KV for multi-account pool and token caching
+	IMAGE_KV?: KVNamespace; // Cloudflare KV for storing generated images
 
 	OPENAI_API_KEY?: string; // Optional API key for authentication
 	ENABLE_FAKE_THINKING?: string; // Optional flag to enable fake thinking output (set to "true" to enable)

@@ -16,7 +16,7 @@
   - 支持通过请求体参数 `reasoning_effort` (`low` / `medium` / `high` / `none`) 或系统提示词指令动态覆盖。
 - **全新双模式图像生成 (Image Generation)**：
   - 接入 `gemini-3.1-flash-image` 图像生成模型。
-  - **DSH / OpenAI 聊天直接生图**：支持在聊天中直接选择 `gemini-3.1-flash-image` 发送提示词，自动返回 Base64 渲染的 Markdown 图片。
+  - **DSH / OpenAI 聊天直接生图**：支持在聊天中直接选择 `gemini-3.1-flash-image` 发送提示词，自动托管为符合标准 HTTP(S) 规范的图片链接（支持 Edge Cache、KV 与内存三级缓存，彻底解决 DSH 等客户端因拒绝 `data:` URI 导致图片只显示占位斜体文本的问题）。
   - **SillyTavern 等绘画客户端支持**：支持标准 SD WebUI 端点 (`/sdapi/v1/txt2img` 与 `/sdapi/v1/sd-models`)。
 - **思考内容流式传输规范化**：
   - 流式响应采用标准 OpenAI `reasoning` 与 DeepSeek 规范的 `reasoning_content` 双字段输出。
