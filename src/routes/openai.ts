@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Env, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ModelInfo, MessageContent, EffortLevel } from "../types";
+import { Env, AppVariables, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ModelInfo, MessageContent, EffortLevel } from "../types";
 import { DEFAULT_MODEL, buildExposedModelIds, resolveModel, isValidModel } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
 import { DEFAULT_THINKING_BUDGET, MIME_TYPE_MAP } from "../constants";
@@ -7,7 +7,10 @@ import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
 import { createOpenAIStreamTransformer } from "../stream-transformer";
 import { isMediaTypeSupported, validateContent, validateModel } from "../utils/validation";
+import { trafficLogger } from "../traffic-logger";
 import { Buffer } from "node:buffer";
+
+export const OpenAIRoute = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 // Helper function to remove thinking blocks from message content
 function stripThinkingBlocks(messages: ChatCompletionRequest["messages"]): ChatCompletionRequest["messages"] {
@@ -21,11 +24,6 @@ function stripThinkingBlocks(messages: ChatCompletionRequest["messages"]): ChatC
 		return msg;
 	});
 }
-
-/**
- * OpenAI-compatible API routes for models and chat completions.
- */
-export const OpenAIRoute = new Hono<{ Bindings: Env }>();
 
 // List available models
 OpenAIRoute.get("/models", async (c) => {
@@ -252,7 +250,9 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		// Test authentication first
 		try {
 			await authManager.initializeAuth();
-			console.log("Authentication successful");
+			const email = await authManager.getCurrentAccountEmail();
+			c.set("accountEmail", email);
+			console.log("Authentication successful, account:", email);
 		} catch (authError: unknown) {
 			const errorMessage = authError instanceof Error ? authError.message : String(authError);
 			console.error("Authentication failed:", errorMessage);
@@ -296,7 +296,22 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 			// Streaming response
 			const { readable, writable } = new TransformStream();
 			const writer = writable.getWriter();
-			const openAITransformer = createOpenAIStreamTransformer(model);
+			const logId = c.get("logId");
+			const openAITransformer = createOpenAIStreamTransformer(model, (info) => {
+				if (logId) {
+					trafficLogger.updateLog(logId, {
+						tokens: info.tokens,
+						response: {
+							headers: { "Content-Type": "text/event-stream" },
+							body: {
+								stream_text: info.fullContent,
+								reasoning_text: info.reasoningContent || undefined
+							},
+							isStream: true
+						}
+					});
+				}
+			});
 			const openAIStream = readable.pipeThrough(openAITransformer);
 
 			// Asynchronously pipe data from Gemini to transformer

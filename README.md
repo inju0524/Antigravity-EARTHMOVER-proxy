@@ -17,6 +17,7 @@
 - 🔄 **自治 Token 管理**：内置 OAuth 刷新体系与多账号 KV 轮询热备，自动应对单账号配额耗尽。
 - 👁️ **全能多模态支持**：支持图片、音频、视频、PDF 文件解析。
 - 🎨 **绘图兼容**：内置 `/sdapi/v1/txt2img` 接口，可直接接入 SillyTavern 等客户端绘画。
+- 📊 **可视化 Web 控制台与流量日志**：内置开箱即用的前端仪表盘（访问 `/dashboard`），支持实时录制流量、请求/响应双向报文审查（带思考过程与错误高亮）、多账号健康监控与在线单步测试。
 
 ---
 
@@ -63,6 +64,25 @@ npx wrangler secret put GCP_SERVICE_ACCOUNT
 
 - **API Base URL**：`https://<你的Worker域名>/v1`
 - **API Key**：`sk-antigravity`（可填写任意非空字符串，鉴权由 Worker 代理处理）
+
+---
+
+## 📊 Web 管理仪表盘与流量监控 (Dashboard)
+
+本项目内置了一个无需任何本地配置、运行在边缘节点上的轻量级单页控制台：
+
+- **访问地址**：在浏览器直接打开 `https://<你的Worker域名>/dashboard`（访问根路径亦会自动跳转）。
+- **主要模块与特性**：
+  1. **📡 实时流量日志 (Traffic Logs)**：
+     - **动态录制**：支持开启/暂停流量录制，自动捕获经过反代的每一次 API 请求。
+     - **多维过滤**：支持按模型名 (`gemini`, `claude`)、路径、状态码 (`200`, `400`, `429`)、账号或快速分类标签（`claude`, `flash`, `仅错误` 等）过滤筛选。
+     - **报文深入审查 (Inspector)**：点击任意请求行可呼出右侧抽屉面板，查看完整的**请求报文 (Request Body & Headers)** 与 **响应报文 (Response Body & Headers)**；特别支持流式思考链 (Reasoning Content) 高亮与 4xx/5xx 上游错误报文诊断。
+  2. **👥 多账号监控 (Account Pool)**：
+     - 实时查看主账号及 KV 账号池中各凭证的健康状态、优先级、Token 有效期倒计时。
+     - 自动标示 Gemini 与 Partner (Claude) 独立配额耗尽与冷却状态。
+  3. **🧪 在线单步测试 (Playground)**：
+     - 免配置可视化切换模型（Gemini 3.8 / 3.6 / 3.7 / Claude 等）与思考强度（`none` / `low` / `medium` / `high`）。
+     - 直接在网页中发起测试、实时查看耗时与 Token 统计，结果自动记入流量监控面板。
 
 ---
 
@@ -176,11 +196,11 @@ npx wrangler deploy
 
 ## 🔮 未来规划与优化方向 (Roadmap)
 
+- [x] **Web 简易管理仪表盘与流量监控**：提供一个开箱即用的静态前端（`/dashboard`），用于可视化查看多账号健康状态、切换模型与单步测试、审查双向响应报文。
 - [ ] **请求级缓存优化**：对于高频重复的前置 System Prompt 或知识库 Prompt，接入 KV 或 Cache API 实现请求层缓存。
 - [ ] **工具调用 (Function Calling) 深度适配**：持续优化 Gemini 3 系列在代码编写与工具调用场景下的 thoughtSignature 与参数清洗机制。
 - [ ] **动态配额感知与智能路由**：根据 `/debug/raw-models` 中暴露的 `remainingFraction` 剩余配额百分比，智能优先调度健康额度更高的账号。
 - [ ] **自定义 System Prompt 注入管理**：支持在反代层面预配置统一的系统提示词前缀或安全过滤策略。
-- [ ] **Web 简易管理仪表盘**：提供一个开箱即用的静态前端，用于可视化查看多账号健康状态、切换模型与单步测试。
 
 ---
 

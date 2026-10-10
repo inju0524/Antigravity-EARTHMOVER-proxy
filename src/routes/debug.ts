@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Env } from "../types";
+import { Env, AppVariables } from "../types";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "../config";
@@ -7,7 +7,7 @@ import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "../config";
 /**
  * Debug and testing routes for troubleshooting authentication and API functionality.
  */
-export const DebugRoute = new Hono<{ Bindings: Env }>();
+export const DebugRoute = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 // Check KV cache status
 DebugRoute.get("/cache", async (c) => {
@@ -25,11 +25,14 @@ DebugRoute.post("/token-test", async (c) => {
 
 		// Test authentication only
 		await authManager.initializeAuth();
-		console.log("Token test passed");
+		const email = await authManager.getCurrentAccountEmail();
+		c.set("accountEmail", email);
+		console.log("Token test passed for", email);
 
 		return c.json({
 			status: "ok",
-			message: "Token authentication successful"
+			message: "Token authentication successful",
+			account: email
 		});
 	} catch (e: unknown) {
 		const errorMessage = e instanceof Error ? e.message : String(e);
@@ -38,7 +41,6 @@ DebugRoute.post("/token-test", async (c) => {
 			{
 				status: "error",
 				message: errorMessage
-				// Removed stack trace for security
 			},
 			500
 		);
@@ -54,7 +56,9 @@ DebugRoute.post("/test", async (c) => {
 
 		// Test authentication
 		await authManager.initializeAuth();
-		console.log("Auth test passed");
+		const email = await authManager.getCurrentAccountEmail();
+		c.set("accountEmail", email);
+		console.log("Auth test passed for", email);
 
 		// Test project discovery
 		const projectId = await geminiClient.discoverProjectId();

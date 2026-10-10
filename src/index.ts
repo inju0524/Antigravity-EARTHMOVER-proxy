@@ -59,14 +59,21 @@ app.use("/v1/*", openAIApiKeyAuth);
 
 import { SdapiRoute } from "./routes/sdapi";
 import { DebugRoute } from "./routes/debug";
+import { DashboardRoute } from "./routes/dashboard";
 
 // Setup route handlers
 app.route("/v1", OpenAIRoute);
 app.route("/sdapi", SdapiRoute);
 app.route("/debug", DebugRoute);
+app.route("/dashboard", DashboardRoute);
 
 // Root endpoint - basic info about the service
 app.get("/", (c) => {
+	const accept = c.req.header("Accept") || "";
+	if (accept.includes("text/html")) {
+		return c.redirect("/dashboard");
+	}
+
 	const requiresAuth = !!c.env.OPENAI_API_KEY;
 
 	return c.json({
@@ -79,7 +86,8 @@ app.get("/", (c) => {
 		},
 		endpoints: {
 			chat_completions: "/v1/chat/completions",
-			models: "/v1/models"
+			models: "/v1/models",
+			dashboard: "/dashboard"
 		},
 		documentation: "https://github.com/gewoonjaap/gemini-cli-openai"
 	});

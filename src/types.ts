@@ -39,9 +39,15 @@ export interface Env {
 	INCLUDE_SEARCH_ENTRY_POINT?: string; // Include search entry point HTML (default: false)
 }
 
+export interface AppVariables {
+	accountEmail?: string;
+	logId?: string;
+}
+
 // --- Multi-Account Pool Interface ---
 export interface AccountData {
 	refresh_token: string;
+	email?: string;
 	access_token?: string;
 	expiry_date?: number;
 	exhausted_gemini_until?: number; // Unix timestamp

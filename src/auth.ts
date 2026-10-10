@@ -310,4 +310,85 @@ export class AuthManager {
 	public getAccessToken(): string | null {
 		return this.currentAccessToken;
 	}
+
+	public getCurrentAccountId(): string | null {
+		return this.currentAccountId;
+	}
+
+	public async getCurrentAccountEmail(): Promise<string> {
+		if (this.currentAccountId && this.currentAccountId !== "legacy_single_account" && this.env.ACCOUNTS_KV) {
+			try {
+				const data = await this.env.ACCOUNTS_KV.get<AccountData>(this.currentAccountId, "json");
+				if (data?.email) return data.email;
+				return this.currentAccountId;
+			} catch {}
+		}
+		if (this.env.GCP_SERVICE_ACCOUNT) {
+			try {
+				const creds = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+				if (creds.email) return creds.email;
+			} catch {}
+		}
+		return "primary (GCP)";
+	}
+
+	public async getAllAccountsStatus(): Promise<Array<{
+		id: string;
+		email: string;
+		priority: number;
+		is_invalid: boolean;
+		gemini_status: "healthy" | "exhausted";
+		partner_status: "healthy" | "exhausted";
+		gemini_exhausted_until?: number;
+		partner_exhausted_until?: number;
+		token_expires_in?: number;
+	}>> {
+		const list: any[] = [];
+		const now = Date.now();
+
+		if (this.env.ACCOUNTS_KV) {
+			try {
+				const keys = await this.env.ACCOUNTS_KV.list();
+				for (const k of keys.keys) {
+					if (k.name === KV_TOKEN_KEY || k.name.startsWith("_")) continue;
+					const data = await this.env.ACCOUNTS_KV.get<AccountData>(k.name, "json");
+					if (!data) continue;
+
+					const geminiExhausted = !!(data.exhausted_gemini_until && data.exhausted_gemini_until > now);
+					const partnerExhausted = !!(data.exhausted_partner_until && data.exhausted_partner_until > now);
+
+					list.push({
+						id: k.name,
+						email: data.email || k.name,
+						priority: data.priority ?? 100,
+						is_invalid: !!data.is_invalid,
+						gemini_status: geminiExhausted ? "exhausted" : "healthy",
+						partner_status: partnerExhausted ? "exhausted" : "healthy",
+						gemini_exhausted_until: data.exhausted_gemini_until,
+						partner_exhausted_until: data.exhausted_partner_until,
+						token_expires_in: data.expiry_date ? Math.max(0, Math.floor((data.expiry_date - now) / 1000)) : 0
+					});
+				}
+			} catch (e) {
+				console.error("[MultiAuth] Error fetching accounts from KV:", e);
+			}
+		}
+
+		if (list.length === 0 && this.env.GCP_SERVICE_ACCOUNT) {
+			try {
+				const creds = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+				list.push({
+					id: "primary",
+					email: creds.email || "primary_account",
+					priority: 1,
+					is_invalid: false,
+					gemini_status: "healthy",
+					partner_status: "healthy",
+					token_expires_in: creds.expiry_date ? Math.max(0, Math.floor((creds.expiry_date - now) / 1000)) : 3600
+				});
+			} catch {}
+		}
+
+		return list;
+	}
 }

@@ -77,11 +77,24 @@ function isNativeToolResponse(data: unknown): data is NativeToolResponse {
 	return typeof data === "object" && data !== null && "type" in data && "data" in data;
 }
 
+export interface StreamCompleteInfo {
+	fullContent: string;
+	reasoningContent: string;
+	tokens: {
+		input: number;
+		output: number;
+		total: number;
+	};
+}
+
 /**
  * Creates a TransformStream to convert Gemini's output chunks
  * into OpenAI-compatible server-sent events.
  */
-export function createOpenAIStreamTransformer(model: string): TransformStream<StreamChunk, Uint8Array> {
+export function createOpenAIStreamTransformer(
+	model: string,
+	onStreamComplete?: (info: StreamCompleteInfo) => void
+): TransformStream<StreamChunk, Uint8Array> {
 	const chatID = `chatcmpl-${crypto.randomUUID()}`;
 	const creationTime = Math.floor(Date.now() / 1000);
 	const encoder = new TextEncoder();
@@ -89,6 +102,8 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 	let toolCallIndex = 0; // Counter for parallel tool calls
 	let hasToolCalls = false;
 	let usageData: UsageData | undefined;
+	let fullContent = "";
+	let reasoningContent = "";
 
 	return new TransformStream({
 		transform(chunk, controller) {
@@ -100,6 +115,7 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 				case "thinking_content":
 					if (typeof chunk.data === "string") {
 						delta.content = chunk.data;
+						fullContent += chunk.data;
 						if (firstChunk) {
 							delta.role = "assistant";
 							firstChunk = false;
@@ -110,12 +126,14 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 					if (typeof chunk.data === "string") {
 						delta.reasoning = chunk.data;
 						delta.reasoning_content = chunk.data;
+						reasoningContent += chunk.data;
 					}
 					break;
 				case "reasoning":
 					if (isReasoningData(chunk.data)) {
 						delta.reasoning = chunk.data.reasoning;
 						delta.reasoning_content = chunk.data.reasoning;
+						if (chunk.data.reasoning) reasoningContent += chunk.data.reasoning;
 					}
 					break;
 				case "tool_code":
@@ -187,12 +205,31 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 				choices: [{ index: 0, delta: {}, finish_reason: finishReason }]
 			};
 
+			const inTok = usageData?.inputTokens ?? 0;
+			const outTok = usageData?.outputTokens ?? 0;
+
 			if (usageData) {
 				finalChunk.usage = {
-					prompt_tokens: usageData.inputTokens,
-					completion_tokens: usageData.outputTokens,
-					total_tokens: usageData.inputTokens + usageData.outputTokens
+					prompt_tokens: inTok,
+					completion_tokens: outTok,
+					total_tokens: inTok + outTok
 				};
+			}
+
+			if (onStreamComplete) {
+				try {
+					onStreamComplete({
+						fullContent,
+						reasoningContent,
+						tokens: {
+							input: inTok,
+							output: outTok,
+							total: inTok + outTok
+						}
+					});
+				} catch (e) {
+					console.warn("[StreamTransformer] onStreamComplete callback error:", e);
+				}
 			}
 
 			controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
