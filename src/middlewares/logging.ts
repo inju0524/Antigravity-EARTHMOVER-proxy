@@ -47,6 +47,10 @@ export const loggingMiddleware = async (
 					if (reqBody && reqBody.model) {
 						model = reqBody.model;
 					}
+					// For sdapi or large prompts, truncate long strings to keep memory & CPU near zero
+					if (path.startsWith("/sdapi") && reqBody.prompt && typeof reqBody.prompt === "string" && reqBody.prompt.length > 1000) {
+						reqBody = { ...reqBody, prompt: reqBody.prompt.slice(0, 1000) + "... [truncated for logging]" };
+					}
 				} catch {
 					reqBody = text.length > 2000 ? text.slice(0, 2000) + "... [truncated]" : text;
 				}
@@ -89,18 +93,25 @@ export const loggingMiddleware = async (
 
 	if (!isStream) {
 		try {
-			const clonedRes = c.res.clone();
-			const text = await clonedRes.text();
-			if (text) {
-				try {
-					resBody = JSON.parse(text);
-					if (resBody?.usage) {
-						tokens.input = resBody.usage.prompt_tokens || 0;
-						tokens.output = resBody.usage.completion_tokens || 0;
-						tokens.total = resBody.usage.total_tokens || tokens.input + tokens.output;
+			// Special handling for image generation endpoint to prevent "Worker exceeded CPU time limit":
+			// txt2img responses contain massive 1~2MB base64 strings.
+			// Cloning, text decoding, JSON.parse, and re-serializing them burns all CPU budget on Cloudflare Workers!
+			if (path.startsWith("/sdapi")) {
+				resBody = { message: "[Base64 image generated successfully. Body omitted to save CPU/memory]" };
+			} else {
+				const clonedRes = c.res.clone();
+				const text = await clonedRes.text();
+				if (text) {
+					try {
+						resBody = JSON.parse(text);
+						if (resBody?.usage) {
+							tokens.input = resBody.usage.prompt_tokens || 0;
+							tokens.output = resBody.usage.completion_tokens || 0;
+							tokens.total = resBody.usage.total_tokens || tokens.input + tokens.output;
+						}
+					} catch {
+						resBody = text.length > 3000 ? text.slice(0, 3000) + "... [truncated]" : text;
 					}
-				} catch {
-					resBody = text.length > 5000 ? text.slice(0, 5000) + "... [truncated]" : text;
 				}
 			}
 		} catch {

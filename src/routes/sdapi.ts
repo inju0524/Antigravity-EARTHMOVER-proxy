@@ -6,12 +6,19 @@ import { GeminiApiClient } from "../gemini-client";
 
 export const SdapiRoute = new Hono<{ Bindings: Env }>();
 
+let cachedProjectId: string | null = null;
+
 SdapiRoute.post("/v1/txt2img", async (c) => {
 	try {
 		console.log("A1111 txt2img request received");
 		const body = await c.req.json<any>();
-		const prompt = body.prompt || "";
+		let prompt = body.prompt || "";
 		let aspectRatio = "1:1";
+
+		// If user or SillyTavern supplies a negative prompt, seamlessly combine it
+		if (body.negative_prompt && typeof body.negative_prompt === "string" && body.negative_prompt.trim()) {
+			prompt = `${prompt}\nAvoid: ${body.negative_prompt.trim()}`;
+		}
 
 		if (body.width && body.height) {
 			const w = body.width;
@@ -50,8 +57,15 @@ SdapiRoute.post("/v1/txt2img", async (c) => {
 		const authManager = new AuthManager(c.env);
 		await authManager.initializeAuth("gemini-3.1-flash-image");
 
-		const geminiClient = new GeminiApiClient(c.env, authManager);
-		const projectId = await geminiClient.discoverProjectId();
+		let projectId: string | undefined = cachedProjectId || c.env.GEMINI_PROJECT_ID;
+		if (!projectId) {
+			const geminiClient = new GeminiApiClient(c.env, authManager);
+			const discovered = await geminiClient.discoverProjectId();
+			if (discovered) {
+				projectId = discovered;
+				cachedProjectId = discovered;
+			}
+		}
 
 		const requestId = `image_gen/${Date.now()}/${crypto.randomUUID()}/4`;
 

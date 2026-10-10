@@ -34,6 +34,11 @@
   - 仅对 3.6+ 新模型开启 `-low` / `-medium` / `-high` 变体列表，旧模型默认自动锁定最高思考能力，模型列表更加清晰。
 - **请求配置参数保留**：
   - 修复流式转发中 `temperature`、`top_p`、`stop`、`seed`、`response_format` 被覆盖丢失的问题。
+- **生图长提示词与 CPU 超限深度优化 (Fix Error 1102 / CPU limit)**：
+  - 彻底解决长提示词生图时触发 Cloudflare `Worker exceeded CPU time limit` 的问题。
+  - 对 `/sdapi` 生图接口进行日志脱敏与零开销摘要截断，禁止对上兆字节的 Base64 响应体执行高耗时的克隆和二次序列化。
+  - 在 Worker 进程内缓存 Google 项目 ID，免除每轮生图都重复向上游发起 `loadCodeAssist` 探测请求的 CPU 与网络开销。
+  - 支持智能合并 SillyTavern 传递的 `negative_prompt` 负向提示词。
 - **速率限制自动降级链升级**：
   - 扩充 `AUTO_SWITCH_MODEL_MAP`，遇到 429/503 时在对应家族内部平滑降级（如 3.8-high -> 3.8-medium -> 3.8-low -> tiered）。
 
