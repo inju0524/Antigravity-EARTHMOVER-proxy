@@ -281,13 +281,28 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 				
 				let status = 500;
 				if (errorMessage.includes("429")) status = 429;
+				else if (errorMessage.includes("503")) status = 503;
 				else if (errorMessage.includes("401")) status = 401;
 				else if (errorMessage.includes("400")) status = 400;
+
+				const logId = c.get("logId");
+				if (logId) {
+					trafficLogger.updateLog(logId, {
+						status,
+						response: {
+							headers: { "Content-Type": "application/json" },
+							body: { error: errorMessage, code: status }
+						}
+					});
+					if (c.env.LOGS_KV && c.executionCtx) {
+						c.executionCtx.waitUntil(trafficLogger.persistToKV(c.env.LOGS_KV));
+					}
+				}
 
 				return c.json({
 					error: {
 						message: errorMessage,
-						type: status === 429 ? "rate_limit_error" : "api_error",
+						type: status === 429 ? "rate_limit_error" : (status === 503 ? "service_unavailable" : "api_error"),
 						code: status
 					}
 				}, status as any);
@@ -310,6 +325,9 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 							isStream: true
 						}
 					});
+					if (c.env.LOGS_KV && c.executionCtx) {
+						c.executionCtx.waitUntil(trafficLogger.persistToKV(c.env.LOGS_KV));
+					}
 				}
 			});
 			const openAIStream = readable.pipeThrough(openAITransformer);
@@ -329,6 +347,25 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 				} catch (streamError: unknown) {
 					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
 					console.error("Stream error mid-stream:", errorMessage);
+					
+					let errStatus = 500;
+					if (errorMessage.includes("429")) errStatus = 429;
+					else if (errorMessage.includes("503")) errStatus = 503;
+
+					if (logId) {
+						trafficLogger.updateLog(logId, {
+							status: errStatus,
+							response: {
+								headers: { "Content-Type": "application/json" },
+								body: { error: `Mid-stream failure: ${errorMessage}`, code: errStatus },
+								isStream: true
+							}
+						});
+						if (c.env.LOGS_KV && c.executionCtx) {
+							c.executionCtx.waitUntil(trafficLogger.persistToKV(c.env.LOGS_KV));
+						}
+					}
+
 					// Abort the stream if an error occurs mid-stream
 					await writer.abort(streamError);
 				}

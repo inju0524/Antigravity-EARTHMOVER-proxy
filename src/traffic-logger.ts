@@ -105,8 +105,43 @@ class TrafficLogStore {
 		}
 	}
 
-	public clearLogs() {
+	public async loadFromKV(kv?: KVNamespace) {
+		if (!kv) return;
+		try {
+			const saved = await kv.get<TrafficLogItem[]>("_traffic_logs_v1", "json");
+			if (saved && Array.isArray(saved) && saved.length > 0) {
+				const map = new Map<string, TrafficLogItem>();
+				for (const item of this.logs) map.set(item.id, item);
+				for (const item of saved) {
+					if (!map.has(item.id)) map.set(item.id, item);
+				}
+				this.logs = Array.from(map.values())
+					.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+					.slice(0, this.maxLogs);
+			}
+		} catch (e) {
+			console.warn("[TrafficLogger] loadFromKV warning:", e);
+		}
+	}
+
+	public async persistToKV(kv?: KVNamespace) {
+		if (!kv) return;
+		try {
+			// Save the top 100 recent logs to KV
+			const snapshot = this.logs.slice(0, 100);
+			await kv.put("_traffic_logs_v1", JSON.stringify(snapshot), { expirationTtl: 86400 * 7 });
+		} catch (e) {
+			console.warn("[TrafficLogger] persistToKV warning:", e);
+		}
+	}
+
+	public async clearLogs(kv?: KVNamespace) {
 		this.logs = [];
+		if (kv) {
+			try {
+				await kv.delete("_traffic_logs_v1");
+			} catch {}
+		}
 	}
 
 	public getAccounts(): string[] {

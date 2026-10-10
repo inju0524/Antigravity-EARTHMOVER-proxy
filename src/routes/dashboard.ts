@@ -14,12 +14,16 @@ DashboardRoute.get("/", (c) => {
 });
 
 // 2. Fetch traffic logs
-DashboardRoute.get("/api/logs", (c) => {
+DashboardRoute.get("/api/logs", async (c) => {
 	const limit = Number(c.req.query("limit") || 100);
 	const offset = Number(c.req.query("offset") || 0);
 	const query = c.req.query("q") || "";
 	const account = c.req.query("account") || "";
 	const status = c.req.query("status") || "";
+
+	if (c.env.LOGS_KV) {
+		await trafficLogger.loadFromKV(c.env.LOGS_KV);
+	}
 
 	const result = trafficLogger.getLogs(limit, offset, query, account, status);
 	const accounts = trafficLogger.getAccounts();
@@ -31,8 +35,11 @@ DashboardRoute.get("/api/logs", (c) => {
 });
 
 // 3. Fetch single log detail
-DashboardRoute.get("/api/logs/:id", (c) => {
+DashboardRoute.get("/api/logs/:id", async (c) => {
 	const id = c.req.param("id");
+	if (c.env.LOGS_KV) {
+		await trafficLogger.loadFromKV(c.env.LOGS_KV);
+	}
 	const log = trafficLogger.getLogById(id);
 	if (!log) return c.json({ error: "Log not found" }, 404);
 	return c.json(log);
@@ -46,8 +53,8 @@ DashboardRoute.post("/api/recording", async (c) => {
 });
 
 // 5. Clear all logs
-DashboardRoute.delete("/api/logs", (c) => {
-	trafficLogger.clearLogs();
+DashboardRoute.delete("/api/logs", async (c) => {
+	await trafficLogger.clearLogs(c.env.LOGS_KV);
 	return c.json({ ok: true, message: "Logs cleared" });
 });
 

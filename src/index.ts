@@ -98,4 +98,26 @@ app.get("/health", (c) => {
 	return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Global error handler - guarantees all unhandled errors are formatted as JSON and recorded
+app.onError((err, c) => {
+	const errorMessage = err instanceof Error ? err.message : String(err);
+	console.error("[App Error]", errorMessage);
+
+	let status = 500;
+	if (errorMessage.includes("429")) status = 429;
+	else if (errorMessage.includes("503")) status = 503;
+	else if (errorMessage.includes("400")) status = 400;
+
+	return c.json(
+		{
+			error: {
+				message: errorMessage,
+				type: status === 503 ? "service_unavailable" : "server_error",
+				code: status
+			}
+		},
+		status as any
+	);
+});
+
 export default app;

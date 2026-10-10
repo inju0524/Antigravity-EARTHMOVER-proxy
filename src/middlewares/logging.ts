@@ -138,6 +138,14 @@ export const loggingMiddleware = async (
 
 	trafficLogger.addLog(logItem);
 
+	if (c.env.LOGS_KV && c.executionCtx) {
+		try {
+			c.executionCtx.waitUntil(trafficLogger.persistToKV(c.env.LOGS_KV));
+		} catch (e) {
+			console.warn("[Logging] Background KV persist warning:", e);
+		}
+	}
+
 	console.log(
 		`[${new Date().toISOString()}] ${method} ${path} - Finished ${status} (${durationMs}ms, in: ${tokens.input}, out: ${tokens.output})`
 	);

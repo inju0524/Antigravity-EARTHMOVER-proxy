@@ -102,8 +102,8 @@ export function createOpenAIStreamTransformer(
 	let toolCallIndex = 0; // Counter for parallel tool calls
 	let hasToolCalls = false;
 	let usageData: UsageData | undefined;
-	let fullContent = "";
-	let reasoningContent = "";
+	const contentChunks: string[] = [];
+	const reasoningChunks: string[] = [];
 
 	return new TransformStream({
 		transform(chunk, controller) {
@@ -115,7 +115,7 @@ export function createOpenAIStreamTransformer(
 				case "thinking_content":
 					if (typeof chunk.data === "string") {
 						delta.content = chunk.data;
-						fullContent += chunk.data;
+						contentChunks.push(chunk.data);
 						if (firstChunk) {
 							delta.role = "assistant";
 							firstChunk = false;
@@ -126,14 +126,14 @@ export function createOpenAIStreamTransformer(
 					if (typeof chunk.data === "string") {
 						delta.reasoning = chunk.data;
 						delta.reasoning_content = chunk.data;
-						reasoningContent += chunk.data;
+						reasoningChunks.push(chunk.data);
 					}
 					break;
 				case "reasoning":
 					if (isReasoningData(chunk.data)) {
 						delta.reasoning = chunk.data.reasoning;
 						delta.reasoning_content = chunk.data.reasoning;
-						if (chunk.data.reasoning) reasoningContent += chunk.data.reasoning;
+						if (chunk.data.reasoning) reasoningChunks.push(chunk.data.reasoning);
 					}
 					break;
 				case "tool_code":
@@ -219,8 +219,8 @@ export function createOpenAIStreamTransformer(
 			if (onStreamComplete) {
 				try {
 					onStreamComplete({
-						fullContent,
-						reasoningContent,
+						fullContent: contentChunks.join(""),
+						reasoningContent: reasoningChunks.join(""),
 						tokens: {
 							input: inTok,
 							output: outTok,
