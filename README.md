@@ -16,7 +16,9 @@
   - 支持 OpenAI 标准 `reasoning` / `reasoning_content` 双字段流式输出，杜绝普通正文中掺杂 `<think>` 等格式污染。
 - 🔄 **自治 Token 管理**：内置 OAuth 刷新体系与多账号 KV 轮询热备，自动应对单账号配额耗尽。
 - 👁️ **全能多模态支持**：支持图片、音频、视频、PDF 文件解析。
-- 🎨 **绘图兼容**：内置 `/sdapi/v1/txt2img` 接口，可直接接入 SillyTavern 等客户端绘画。
+- 🎨 **双模式图像生成**：
+  - **OpenAI 兼容对话生图**：支持直接在 DSH / 常见 AI 客户端中使用 `gemini-3.1-flash-image` 模型，输入提示词直接返回 Markdown 图片！
+  - **标准 SD WebUI 接口**：内置 `/sdapi/v1/txt2img`，可无缝对接 SillyTavern 等 WebUI 绘画客户端。
 
 ---
 
@@ -97,6 +99,25 @@ npx wrangler secret put GCP_SERVICE_ACCOUNT
 reasoning_effort=high
 show_reasoning=true
 ```
+
+---
+
+## 🎨 图像生成 (Image Generation)
+
+本反代支持两种生图模式，覆盖 DSH 对话界面与 SillyTavern 等绘画客户端：
+
+### 模式 1：DSH / 任意聊天客户端直接对话生图 (OpenAI 兼容)
+在 DSH 或支持自定义模型的客户端中：
+1. 模型选择 **`gemini-3.1-flash-image`**
+2. 直接向 AI 发送描述词（例如：`画一只草地上的小猫`）
+3. 代理会自动调用底层 Nanobanano 生图服务，并将生成的图像以标准 Markdown 图片（`![Generated Image](data:image/jpeg;base64,...)`）直接回显在聊天框中！
+
+### 模式 2：SillyTavern 等绘画工具 (SD WebUI 协议)
+内置标准 Stable Diffusion WebUI 兼容接口，配置方式如下：
+1. 打开客户端的 **Image Generation (图像生成)** 设置。
+2. 绘图提供商选择 **Stable Diffusion WebUI**。
+3. **API URL** 填入：`https://<你的Worker域名>`（⚠️ 注意：末尾**不要**加 `/v1`）。
+4. 正常发送绘图提示词即可，底层将自动路由至 Gemini 进行高保真生成。
 
 ---
 

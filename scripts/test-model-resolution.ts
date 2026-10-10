@@ -87,7 +87,7 @@ for (const banned of [
 ]) {
 	check(`hides ${banned}`, ids.includes(banned), false);
 }
-check("filters image", ids.some((i) => i.toLowerCase().includes("image")), false);
+check("filters image except flash-image", ids.filter((i) => i.toLowerCase().includes("image") && i !== "gemini-3.1-flash-image").length, 0);
 // No duplicate physical models under different names
 check("no duplicate 3.1-pro-high entries", ids.filter((i) => normalizeModelId(i) === "gemini-31-pro-high").length, 1);
 check("no duplicate claude-sonnet entries", ids.filter((i) => normalizeModelId(i) === "claude-sonnet-46-thinking").length, 1);

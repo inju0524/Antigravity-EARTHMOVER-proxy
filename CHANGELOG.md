@@ -14,6 +14,10 @@
   - 针对上游仅投放自动分层 `tiered` 变体的情况，在代理层无缝合成 `-low`、`-medium`、`-high` 虚拟变体。
   - 支持直接在模型名中使用（如 `gemini-3.8-flash-high`）。
   - 支持通过请求体参数 `reasoning_effort` (`low` / `medium` / `high` / `none`) 或系统提示词指令动态覆盖。
+- **全新双模式图像生成 (Image Generation)**：
+  - 接入 `gemini-3.1-flash-image` 图像生成模型。
+  - **DSH / OpenAI 聊天直接生图**：支持在聊天中直接选择 `gemini-3.1-flash-image` 发送提示词，自动返回 Base64 渲染的 Markdown 图片。
+  - **SillyTavern 等绘画客户端支持**：支持标准 SD WebUI 端点 (`/sdapi/v1/txt2img` 与 `/sdapi/v1/sd-models`)。
 - **思考内容流式传输规范化**：
   - 流式响应采用标准 OpenAI `reasoning` 与 DeepSeek 规范的 `reasoning_content` 双字段输出。
   - 默认将 `STREAM_THINKING_AS_CONTENT` 设为 `false`，彻底避免普通正文出现 `<think>` 标签或被富文本编辑器误识别为代码块。
