@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENABLE_REAL_THINKING = "true"
-STREAM_THINKING_AS_CONTENT = "true"
+STREAM_THINKING_AS_CONTENT = "false"
 # GEMINI_SAFETY_THRESHOLD = "BLOCK_NONE"
 
 # --- Cloudflare KV Databases ---
