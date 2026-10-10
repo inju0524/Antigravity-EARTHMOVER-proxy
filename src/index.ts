@@ -58,10 +58,12 @@ app.use("/v1/*", async (c, next) => {
 app.use("/v1/*", openAIApiKeyAuth);
 
 import { SdapiRoute } from "./routes/sdapi";
+import { DebugRoute } from "./routes/debug";
 
 // Setup route handlers
 app.route("/v1", OpenAIRoute);
 app.route("/sdapi", SdapiRoute);
+app.route("/debug", DebugRoute);
 
 // Root endpoint - basic info about the service
 app.get("/", (c) => {

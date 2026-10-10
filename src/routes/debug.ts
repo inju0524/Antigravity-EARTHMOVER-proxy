@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { Env } from "../types";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
+import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "../config";
 
 /**
  * Debug and testing routes for troubleshooting authentication and API functionality.
@@ -76,5 +77,39 @@ DebugRoute.post("/test", async (c) => {
 			},
 			500
 		);
+	}
+});
+
+// Raw upstream model dump — shows EXACTLY what the official Antigravity
+// Code Assist endpoint returns for this account, before any proxy-side
+// filtering or aliasing. Useful to verify which variants Google exposes.
+DebugRoute.get("/raw-models", async (c) => {
+	try {
+		const authManager = new AuthManager(c.env);
+		await authManager.initializeAuth();
+
+		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:fetchAvailableModels`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"Authorization": `Bearer ${authManager.getAccessToken()}`,
+				"User-Agent": "antigravity/cli/1.0.2 windows/amd64"
+			},
+			body: "{}"
+		});
+
+		const text = await response.text();
+		let parsed: unknown = text;
+		try { parsed = JSON.parse(text); } catch { /* keep raw text */ }
+
+		return c.json({
+			upstream: `${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:fetchAvailableModels`,
+			status: response.status,
+			modelCount: (parsed as any)?.models ? Object.keys((parsed as any).models).length : null,
+			raw: parsed
+		}, response.status as any);
+	} catch (e: unknown) {
+		const errorMessage = e instanceof Error ? e.message : String(e);
+		return c.json({ status: "error", message: errorMessage }, 500);
 	}
 });

@@ -407,6 +407,67 @@ export interface ResolvedModel {
 	thinkingBudget?: number;
 	/** The entry from the dynamic map, when resolution happened dynamically */
 	dynamic?: DynamicModelEntry;
+	/**
+	 * Forced thinking level for synthesized variants of "-tiered" models
+	 * (e.g. gemini-3.8-flash-high routes to the upstream tiered model but
+	 * pins thinkingLevel to "high").
+	 */
+	forcedThinkingLevel?: "low" | "high";
+}
+
+// Thinking level carried by each synthesized tier variant
+const TIER_VARIANT_LEVELS: Record<string, "low" | "high"> = {
+	low: "low",
+	medium: "high",
+	high: "high"
+};
+
+/**
+ * Restores the dotted version number in a normalized family base so exposed
+ * ids stay readable: "gemini-38-flash" -> "gemini-3.8-flash".
+ */
+function denormalizeFamilyBase(base: string): string {
+	return base.replace(/-(\d)(\d)-/, "-$1.$2-");
+}
+
+/**
+ * If the requested id is an effort variant ("-<low|medium|high>") of a
+ * "-tiered" family (e.g. "gemini-3.8-flash-high"), resolve it to the
+ * family's upstream tiered model while forcing the corresponding
+ * thinkingLevel. Returns null when the family is not a tiered family.
+ */
+function resolveSynthesizedTierVariant(
+	normalizedRequest: string,
+	dynamicMap: Record<string, DynamicModelEntry> | null
+): ResolvedModel | null {
+	const m = normalizedRequest.match(/^(.*)-(low|medium|high)$/);
+	if (!m) return null;
+	const familyBase = m[1];
+	const level = TIER_VARIANT_LEVELS[m[2]];
+
+	// Only synthesize when the family actually routes to a "-tiered" model
+	const familyTarget = MODEL_ALIAS_MAP[familyBase];
+	if (!familyTarget || !familyTarget.endsWith("-tiered")) return null;
+
+	const tieredNormalized = normalizeModelId(familyTarget);
+
+	// Prefer the live dynamic entry for the tiered model
+	if (dynamicMap) {
+		for (const [key, entry] of Object.entries(dynamicMap)) {
+			if (normalizeModelId(key) === tieredNormalized || normalizeModelId(entry.displayName || "") === tieredNormalized) {
+				return {
+					id: key,
+					modelEnum: entry.model,
+					thinkingBudget: entry.thinkingBudget,
+					dynamic: entry,
+					forcedThinkingLevel: level
+				};
+			}
+		}
+	}
+
+	// Fall back to the static tiered id
+	return { id: familyTarget, forcedThinkingLevel: level };
 }
 
 /**
@@ -435,7 +496,9 @@ export function resolveModel(
 	const aliasedNormalized = normalizeModelId(aliased);
 
 	// 2. Exact static match — but if an alias points elsewhere, honour the
-	// alias (it encodes the preferred variant, e.g. tiered/medium)
+	// alias (it encodes the preferred variant, e.g. tiered/medium).
+	// NOTE: when the upstream genuinely offers this exact variant in the
+	// dynamic map, prefer it over any synthesized tier variant.
 	const preNormalized = normalizeModelId(requestedId);
 	const preAliased = MODEL_ALIAS_MAP[preNormalized];
 	if (geminiCliModels[requestedId] && (!preAliased || preAliased === requestedId)) {
@@ -447,6 +510,11 @@ export function resolveModel(
 				}
 			}
 		}
+		// Effort variants of a "-tiered" family (gemini-3.8-flash-high) take
+		// priority over the static entry: they route to the upstream tiered
+		// model with a forced thinkingLevel.
+		const tierVariant = resolveSynthesizedTierVariant(normalizedRequest, dynamicMap);
+		if (tierVariant) return tierVariant;
 		return { id: requestedId };
 	}
 
@@ -478,6 +546,10 @@ export function resolveModel(
 	for (const staticId of Object.keys(geminiCliModels)) {
 		const normalizedStatic = normalizeModelId(staticId);
 		if (normalizedStatic === aliasedNormalized || normalizedStatic === normalizedRequest) {
+			// Effort variants of a "-tiered" family route to the tiered model
+			// with a forced thinkingLevel, even without a dynamic map.
+			const tierVariant = resolveSynthesizedTierVariant(normalizedRequest, dynamicMap);
+			if (tierVariant) return tierVariant;
 			return { id: staticId };
 		}
 	}
@@ -518,6 +590,22 @@ export function buildExposedModelIds(dynamicMap: Record<string, DynamicModelEntr
 			// Also expose the raw key when it differs from the display name
 			if (key !== display) {
 				ids.add(key);
+			}
+
+			// Synthesize effort variants for "-tiered" families so clients can
+			// pick a thinking level explicitly (gemini-3.8-flash-high etc.)
+			const normalizedKey = normalizeModelId(key);
+			const normalizedDisplay = normalizeModelId(display);
+			const exposedBases = new Set<string>();
+			for (const family of [normalizedKey, normalizedDisplay]) {
+				const familyBase = family.replace(/-tiered$/, "");
+				if (familyBase === family) continue;
+				exposedBases.add(denormalizeFamilyBase(familyBase));
+			}
+			for (const base of exposedBases) {
+				for (const variant of Object.keys(TIER_VARIANT_LEVELS)) {
+					ids.add(`${base}-${variant}`);
+				}
 			}
 		}
 	} else {

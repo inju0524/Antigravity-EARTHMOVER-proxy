@@ -595,6 +595,7 @@ export class GeminiApiClient {
 		let customThinkingBudget = 1000;
 		let finalModelId = modelId;
 		let dynamicThinkingBudget: number | undefined;
+		let forcedThinkingLevel: "low" | "high" | undefined;
 
 		const resolved = resolveModel(modelId, this.dynamicModelMap);
 		if (resolved) {
@@ -603,6 +604,9 @@ export class GeminiApiClient {
 			if (typeof resolved.thinkingBudget === "number") {
 				customThinkingBudget = resolved.thinkingBudget;
 				dynamicThinkingBudget = resolved.thinkingBudget;
+			}
+			if (resolved.forcedThinkingLevel) {
+				forcedThinkingLevel = resolved.forcedThinkingLevel;
 			}
 		} else if (!this.dynamicModelMap) {
 			// Hardcoded fallbacks based on recent Antigravity 2.0 reverse engineering.
@@ -651,7 +655,16 @@ export class GeminiApiClient {
 		// If no thinking config was set by the validated path (real thinking not
 		// enabled/requested), apply the upstream-advertised defaults so the
 		// backend still runs in the expected thinking mode for this model.
-		if (!finalGenerationConfig.thinkingConfig) {
+		// Synthesized tier variants (gemini-3.8-flash-high on a tiered upstream)
+		// force the thinkingLevel explicitly — this takes precedence over both
+		// the validated config and the upstream defaults.
+		if (forcedThinkingLevel && /gemini-3/.test(finalModelId)) {
+			finalGenerationConfig.thinkingConfig = {
+				thinkingLevel: forcedThinkingLevel,
+				includeThoughts: true
+			};
+			console.log(`[GenerationConfig] Forced thinkingLevel '${forcedThinkingLevel}' for tier variant '${modelId}' (upstream: '${finalModelId}')`);
+		} else if (!finalGenerationConfig.thinkingConfig) {
 			if (/gemini-3/.test(finalModelId)) {
 				// Gemini 3.x uses thinkingLevel rather than a raw budget
 				const level = customThinkingBudget <= 4096 ? "low" : "high";
