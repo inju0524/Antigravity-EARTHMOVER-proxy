@@ -1,188 +1,174 @@
 # Antigravity EARTHMOVER Proxy 🚀
 
-> 一个 **100% 无服务器** 的 Cloudflare Worker 反代，将 Google Antigravity 内部 Cloud Code 端点包装成 OpenAI 兼容 API。
+> 一个 **100% 无服务器 (Serverless)** 的 Cloudflare Worker 反代项目，将 Google 内部 Antigravity Cloud Code 端点无缝转换为标准 OpenAI 兼容 API。
 
-与其他需要你在后台挂着 Antigravity 桌面客户端、从 SQLite 里抠 token 的社区方案不同，本项目**完全自治**：OAuth token 刷新、动态模型发现、请求载荷伪装全部在云端完成。
-
-## ✨ 特性
-
-- ☁️ **100% 无服务器**：部署到 Cloudflare Workers 后关掉终端即可，无需任何常驻进程
-- 🎭 **完美伪装**：完整复刻官方 Go 守护进程的 HTTP 载荷（`thinkingConfig`、`model_enum` 占位符、遥测标签），规避 Google 的 500/403 错误
-- 🔄 **自治鉴权**：使用官方 Antigravity Client ID & Secret 自动交换、刷新 token
-- 🛡️ **反追踪**：剥离 Clearcut 遥测，同时保持请求结构合法
-- 📡 **动态路由**：自动从 Google `fetchAvailableModels` 内部字典发现并路由模型
-- 🧠 **思考强度控制**：支持 `reasoning_effort` 参数与 `gemini-3.8-flash-low/medium/high` 等显式变体（详见下文）
-- 🔌 **IDE 即插即用**：Zed、Cursor、SillyTavern 或任何 OpenAI 兼容前端的直接替代品
-- 👁️ **完整多模态**：图片、音频、视频、PDF 无缝发送，通过智能工具调用伪装绕过内部限制
-- 🎨 **图像生成（Nanobanano)**：内置标准 SD WebUI API(`/sdapi/v1/txt2img`),SillyTavern 开箱即用
-- 🔁 **多账号轮询池**：基于 Cloudflare KV 的热切换账号池，单账号配额耗尽后自动换号重试
+本项目完全自治运行在 Cloudflare 全球边缘节点上，无需本地常驻后台客户端即可完成 OAuth Token 自动刷新、模型动态发现与请求载荷伪装。
 
 ---
 
-## ⚡ 快速上手（新手向）
+## ✨ 核心特性
 
-即使从未用过终端，按步骤操作即可。
+- ☁️ **100% Serverless**：一键部署到 Cloudflare Workers，无需本地运行任何后台程序或守护进程。
+- 🎭 **协议深度适配**：模拟官方 Go 守护进程标准载荷，支持 `thinkingConfig`、`model_enum` 映射及专属标签。
+- 🧠 **全新模型与思考强度支持**：
+  - 完美支持 **Gemini 3.8 / 3.6 / 3.7 / 3.1 Pro / Claude 4.6 (Thinking)**。
+  - 针对 Gemini 3.8 官方仅投放 `tiered` 入口的情况，自动合成 `-low`、`-medium`、`-high` 强度变体。
+  - 支持 OpenAI 标准 `reasoning` / `reasoning_content` 双字段流式输出，杜绝普通正文中掺杂 `<think>` 等格式污染。
+- 🔄 **自治 Token 管理**：内置 OAuth 刷新体系与多账号 KV 轮询热备，自动应对单账号配额耗尽。
+- 👁️ **全能多模态支持**：支持图片、音频、视频、PDF 文件解析。
+- 🎨 **绘图兼容**：内置 `/sdapi/v1/txt2img` 接口，可直接接入 SillyTavern 等客户端绘画。
 
-### 第 0 步：准备工作
+---
 
-1. 下载安装 [Node.js](https://nodejs.org/)(LTS 版本）
-2. 注册免费的 [Cloudflare](https://dash.cloudflare.com/sign-up) 账号
-3. 下载本仓库（点击绿色 `Code` 按钮 → `Download ZIP`）并解压
-4. 打开终端（Windows 用 PowerShell / 命令提示符，Mac 用 Terminal)，进入解压目录：
-   ```bash
-   cd 解压目录路径
-   ```
+## ⚡ 快速部署指引
 
-### 第 1 步：安装依赖并登录
+### 1. 准备环境
+- 安装 [Node.js](https://nodejs.org/) (推荐 LTS 20+)
+- 注册并登录 [Cloudflare](https://dash.cloudflare.com/) 账号
 
+### 2. 本地安装与登录
 ```bash
+git clone https://github.com/<your-username>/Antigravity-EARTHMOVER-proxy.git
+cd Antigravity-EARTHMOVER-proxy
 npm install
 npx wrangler login
 ```
-*（浏览器会弹出 Cloudflare 授权页面，点击 "Allow"。)*
 
-### 第 2 步：获取 Google Token
-
-无需安装官方 Antigravity 客户端，内置脚本会自动模拟 OAuth 流程：
-
+### 3. 获取 Google OAuth Token
+运行内置登录脚本模拟 Antigravity 客户端认证：
 ```bash
 node scripts/login.js
 ```
+根据控制台提示在浏览器打开授权链接，授权完成后终端会输出一段 JSON 凭据，完整复制该内容。
 
-按终端提示操作，脚本最后会输出一大段 JSON,**完整复制**这段 JSON。
-
-### 第 3 步：部署反代
-
+### 4. 部署与注入密钥
 ```bash
+# 部署 Worker
 npx wrangler deploy
-```
 
-### 第 4 步：注入密钥
-
-把你的 Google OAuth token 安全地绑定到 Worker:
-
-```bash
+# 将上一步复制的 JSON 写入环境变量 (提示时粘贴并回车)
 npx wrangler secret put GCP_SERVICE_ACCOUNT
 ```
-*出现提示时粘贴第 2 步复制的 JSON，回车。*
 
-*（可选）* 如果你有自己的 Google Cloud 项目且已开通 Cloud AI Companion API 并愿意付费，可以覆盖默认的免费影子项目：
-
-```bash
-npx wrangler secret put GEMINI_PROJECT_ID
-```
+> **提示**：若已有独立的 Google Cloud 伴随项目且已开启计费，可通过以下命令绑定自定义项目 ID（可选）：
+> ```bash
+> npx wrangler secret put GEMINI_PROJECT_ID
+> ```
 
 ---
 
-## 🛠️ 在任意前端中使用
+## 🛠️ 客户端接入指南
 
-在 IDE（如 Zed、Cursor）或聊天 UI 中配置：
+在任何支持自定义 OpenAI API 的客户端（如 Cursor、Zed、NextChat、Cherry Studio、Chatbox 等）中配置：
 
-- **Base URL:** `https://antigravity-earthmover-worker.<你的子域>.workers.dev/v1`
-  *（具体 URL 见 `npx wrangler deploy` 的终端输出）*
-- **API Key:** `dummy-key` *（随便填，真正的鉴权由 Worker 处理）*
-
-`/v1/models` 会动态返回模型列表，同时包含美化显示名（如 `Gemini 3.8 Flash (High)`）和 kebab-case ID（如 `gemini-3.8-flash-high`)，两种写法都可以用于请求。
+- **API Base URL**：`https://<你的Worker域名>/v1`
+- **API Key**：`sk-antigravity`（可填写任意非空字符串，鉴权由 Worker 代理处理）
 
 ---
 
-## 🧠 思考强度（Thinking Level）控制
+## 🧠 思考强度 (Thinking Level) 使用详解
 
-本项目支持三种方式控制 Gemini 3.x 模型的思考强度：
+本代理为 Gemini 3.x 模型提供三种思考深度调节方式：
 
-**方式一：选择显式变体模型（推荐）**
+### 方式 1：直接调用变体模型名（最推荐）
+| 模型名称 | 行为说明 |
+| :--- | :--- |
+| `gemini-3.8-flash-high` | 锁定高思考深度 (`thinkingLevel: "high"`) |
+| `gemini-3.8-flash-medium` | 锁定中高思考深度 |
+| `gemini-3.8-flash-low` | 锁定低思考深度 (`thinkingLevel: "low"`) |
+| `gemini-3.8-flash-tiered` | 默认上游自动按任务难度分层 |
+| `gemini-3.6-flash-high/low` | 调用官方 3.6 独立强度变体 |
+| `gemini-3.1-pro-high/low` | 调用 3.1 Pro 对应深度变体 |
 
-上游 Antigravity 对 3.8 系列目前只投放了自动分层的 `gemini-3.8-flash-tiered`,本代理在本地合成了显式变体，直接选择即可：
+> **注**：对于早期旧模型（如 Gemini 3.1 Lite、2.5 系列），默认自动锁定最高思考深度，不再冗余展示低配变体。
 
-| 模型 ID | 思考强度 |
-|---|---|
-| `gemini-3.8-flash-low` | low |
-| `gemini-3.8-flash-medium` | high |
-| `gemini-3.8-flash-high` | high |
-| `gemini-3.8-flash-tiered` | 上游自动分层 |
-
-3.6/3.7 家族上游已有真实变体，会直接使用官方条目。
-
-**方式二:`reasoning_effort` 参数**
-
+### 方式 2：请求体标准参数
 ```json
 {
   "model": "gemini-3.8-flash-tiered",
-  "messages": [...],
-  "reasoning_effort": "low"
+  "messages": [{"role": "user", "content": "你好"}],
+  "reasoning_effort": "high"
 }
 ```
 
-可选值：`none` / `low` / `medium` / `high`。
-
-**方式三：系统提示词指令（适用于不暴露参数设置的 UI)**
-
-在系统提示中加入：
-```
+### 方式 3：System Prompt 动态指令
+在不支持额外参数的客户端，可在系统提示词中加入：
+```text
 reasoning_effort=high
 show_reasoning=true
-clean_context=true
 ```
 
 ---
 
-## 🎨 图像生成（SD WebUI API)
+## 🔁 多账号负载均衡与防封禁 (KV 轮询池)
 
-内置基于 Gemini 3.1 Flash Image 模型的图像生成，走标准 SD WebUI 兼容端点。
+对于高频使用 Claude Opus 或 Gemini Pro 的场景，建议配置多账号热备：
 
-在 **SillyTavern** 中配置：
-
-1. 打开 Image Generation 扩展设置
-2. 提供商选择 **Stable Diffusion WebUI**
-3. API URL 填：`https://antigravity-earthmover-worker.<你的子域>.workers.dev`(**不要**加 `/v1` 后缀）
-4. 正常用提示词生图即可（底层通过 nanobanano 方案透明路由到 Gemini)
-
----
-
-## 🔁 多账号轮询池（绕过配额）
-
-Google 对 Claude Opus 和 Gemini Pro 的免费额度限制很激进（动辄 150+ 小时配额封禁）。EARTHMOVER 支持基于 Cloudflare KV 的**多账号热切换池**：某账号配额耗尽时，代理立即将其标记为耗尽，并用下一个可用账号静默重试同一请求。
-
-1. **创建 KV 数据库：**
+1. **创建 Cloudflare KV 命名空间**：
    ```bash
    npx wrangler kv:namespace create ACCOUNTS_KV
    ```
-2. **在 `wrangler.toml` 中绑定：**
-   用文本编辑器打开 `wrangler.toml`，把文件底部的 `YOUR_ACCOUNTS_KV_ID_HERE` 替换为第 1 步得到的 `id`。
-3. **向池中添加账号：**
-   内置脚本会自动完成 OAuth 并把凭据直接写入 KV。对每个小号运行一次：
+2. **在 `wrangler.toml` 中取消注释并填入 ID**：
+   ```toml
+   [[kv_namespaces]]
+   binding = "ACCOUNTS_KV"
+   id = "<第1步生成的ID>"
+   ```
+3. **添加多个账号凭证**：
    ```bash
    node scripts/add-account.js
    ```
-4. **重新部署：**
+4. **重新部署生效**：
    ```bash
    npx wrangler deploy
    ```
 
-此后代理会在所有已加载账号间智能均衡请求。
-
 ---
 
-## 🔧 调试端点
+## 🧑‍💻 开发与日常维护工作流 (Workflow)
 
-| 端点 | 说明 |
-|---|---|
-| `GET /health` | 健康检查 |
-| `POST /debug/token-test` | 测试 OAuth token 是否有效 |
-| `POST /debug/test` | 测试鉴权 + 项目发现 |
-| `GET /debug/raw-models` | **原样**返回上游官方 `fetchAvailableModels` 的完整响应（未经任何过滤），用于确认 Google 实际投放了哪些模型 |
-
----
-
-## 📦 更新部署
-
-代码更新后，重新部署覆盖同一实例即可（密钥和 KV 绑定保存在 Cloudflare 服务端，不会丢失）:
-
+### 1. 本地代码改动与验证
+在修改逻辑后，请确保执行类型检查与自动化解析测试：
 ```bash
-git pull
+# 执行类型检查
+npm run tsc
+
+# 执行模型解析核心单测
+npx tsx scripts/test-model-resolution.ts
+```
+
+### 2. 部署到 Cloudflare
+```bash
 npx wrangler deploy
 ```
 
+### 3. 排查上游可用模型状态
+项目提供免鉴权/带鉴权的调试端点：
+- `GET /health`：查看当前运行状况。
+- `GET /debug/raw-models`：**原样查看** Google 官方当前返回的全部底层模型列表、`thinkingBudget` 及配额百分比。
+
 ---
 
-*免责声明：本项目为教学与研究用途的非官方工具，使用风险自负。它依赖未公开 API,Google 可能随时更改客户端密钥或 API 结构。建议使用小号。*
+## ⚠️ 安全与工作流规范
+
+1. **切勿泄露真实 API 地址与凭据**：
+   - 严禁将包含真实 Worker 域名（如带有私人二级域名的 `*.workers.dev`）提交或暴露在公共仓库中。
+   - 严禁将包含 `refresh_token` 或 `client_secret` 的凭据文件（如 `.env`、临时输出的 JSON）提交到 Git。
+   - 文档中必须统一使用占位符（如 `<你的Worker域名>`、`https://your-worker-subdomain.workers.dev/v1`）。
+2. **账号保护与风险控制**：
+   - 本项目通过非公开接口交互，建议使用备用 Google 账号。
+   - 若遇到连续 429 配额耗尽，Worker 内置了降级逻辑，无需重复暴力发起高并发请求。
+
+---
+
+## 🔮 未来规划与优化方向 (Roadmap)
+
+- [ ] **请求级缓存优化**：对于高频重复的前置 System Prompt 或知识库 Prompt，接入 KV 或 Cache API 实现请求层缓存。
+- [ ] **工具调用 (Function Calling) 深度适配**：持续优化 Gemini 3 系列在代码编写与工具调用场景下的 thoughtSignature 与参数清洗机制。
+- [ ] **动态配额感知与智能路由**：根据 `/debug/raw-models` 中暴露的 `remainingFraction` 剩余配额百分比，智能优先调度健康额度更高的账号。
+- [ ] **自定义 System Prompt 注入管理**：支持在反代层面预配置统一的系统提示词前缀或安全过滤策略。
+- [ ] **Web 简易管理仪表盘**：提供一个开箱即用的静态前端，用于可视化查看多账号健康状态、切换模型与单步测试。
+
+---
+
+*免责声明：本项目仅供技术学习与研究，所使用的接口可能受服务商协议制约。作者不承担任何因使用本工具导致的账号封禁或其他责任。*

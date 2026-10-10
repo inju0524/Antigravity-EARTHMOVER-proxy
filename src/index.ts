@@ -70,9 +70,9 @@ app.get("/", (c) => {
 	const requiresAuth = !!c.env.OPENAI_API_KEY;
 
 	return c.json({
-		name: "Gemini CLI OpenAI Worker",
+		name: "Antigravity EARTHMOVER Proxy",
 		description: "OpenAI-compatible API for Google Gemini models via OAuth",
-		version: "1.0.0",
+		version: "1.1.0",
 		authentication: {
 			required: requiresAuth,
 			type: requiresAuth ? "Bearer token in Authorization header" : "None"
